@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grant Detail</title>
+</head>
+<body>
+
+<a href="/grants">← Back</a>
+
+<h1 id="title"></h1>
+
+<p><strong>Opportunity ID:</strong> <span id="opportunity_id"></span></p>
+<p><strong>Status:</strong> <span id="status"></span></p>
+<p><strong>Agency:</strong> <span id="agency"></span></p>
+<p><strong>Posted Date:</strong> <span id="posted_date"></span></p>
+<p><strong>Close Date:</strong> <span id="close_date"></span></p>
+<p><strong>Deadline Date:</strong> <span id="deadline_date"></span></p>
+<p><strong>Deadline Description:</strong> <span id="deadline_description"></span></p>
+<p><strong>Last Updated Date:</strong> <span id="last_updated_date"></span></p>
+<p><strong>Award Floor:</strong> <span id="award_floor"></span></p>
+<p><strong>Award Ceiling:</strong> <span id="award_ceiling"></span></p>
+<p><strong>Estimated Funding:</strong> <span id="estimated_funding"></span></p>
+<p><strong>Cost Sharing:</strong> <span id="cost_sharing"></span></p>
+<p><strong>Category:</strong> <span id="category"></span></p>
+<p><strong>Eligibility Description:</strong> <span id="eligibility_description"></span></p>
+<p><strong>ALNs:</strong> <span id="alns"></span></p>
+<p><strong>Eligibilities:</strong> <span id="eligibilities"></span></p>
+<p><strong>Funding Categories:</strong> <span id="funding_categories"></span></p>
+<p><strong>Attachments:</strong> <span id="attachments"></span></p>
+
+<p><strong>Description:</strong></p>
+<p id="description"></p>
+
+<script>
+const opportunityId = "{{ opportunity_id }}";
+
+async function loadGrant() {
+    const res = await fetch(`/api/opportunities/${opportunityId}`);
+    const data = await res.json();
+
+    document.getElementById("opportunity_id").innerText = data.opportunity_id;
+    document.getElementById("title").innerText = data.title;
+    document.getElementById("status").innerText = data.status;
+    document.getElementById("agency").innerText = data.agency;
+    document.getElementById("posted_date").innerText = data.posted_date;
+    document.getElementById("close_date").innerText = data.close_date;
+    document.getElementById("deadline_date").innerText = data.deadline_date;
+    document.getElementById("deadline_description").innerText = data.deadline_description;
+    document.getElementById("last_updated_date").innerText = data.last_updated_date;
+    document.getElementById("award_floor").innerText = data.award_floor;
+    document.getElementById("award_ceiling").innerText = data.award_ceiling;
+    document.getElementById("estimated_funding").innerText = data.estimated_funding;
+    document.getElementById("cost_sharing").innerText = data.cost_sharing;
+    document.getElementById("category").innerText = data.category;
+    document.getElementById("eligibility_description").innerText = data.eligibility_description;
+    document.getElementById("alns").innerText = data.alns;
+    document.getElementById("eligibilities").innerText = data.eligibilities;
+    document.getElementById("funding_categories").innerText = data.funding_categories;
+    document.getElementById("attachments").innerText = data.attachments;
+    document.getElementById("description").innerText = data.description || "N/A";
+}
+
+loadGrant();
+</script>
+
+</body>
+</html>

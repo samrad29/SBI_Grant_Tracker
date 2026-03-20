@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Alerts</title>
+</head>
+<body>
+
+<h1>🚨 Alerts</h1>
+
+<table id="alerts-table">
+    <thead>
+        <tr>
+            <th>Detected At</th>
+            <th>Alert Type</th>
+            <th>Field</th>
+            <th>Old Value</th>
+            <th>New Value</th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+<script>
+async function loadAlerts() {
+    const tbody = document.querySelector("#alerts-table tbody");
+    tbody.innerHTML = "";
+
+    try {
+        const res = await fetch("/api/alerts");
+        if (!res.ok) {
+            throw new Error(`Request failed: ${res.status}`);
+        }
+        const data = await res.json();
+
+        data.forEach(alert => {
+            const tr = document.createElement("tr");
+
+            tr.innerHTML = `
+                <td>${alert.detected_at ?? ""}</td>
+                <td>${alert.alert_type ?? ""}</td>
+                <td>${alert.field ?? ""}</td>
+                <td>${alert.old_value ?? ""}</td>
+                <td>${alert.new_value ?? ""}</td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="5">Failed to load alerts.</td>`;
+        tbody.appendChild(tr);
+        console.error(err);
+    }
+}
+
+loadAlerts();
+</script>
+
+</body>
+</html>

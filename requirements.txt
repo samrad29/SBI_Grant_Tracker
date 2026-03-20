@@ -1,0 +1,4 @@
+requests>=2.28.0
+python-dotenv>=1.0.0
+groq>=0.1.0
+flask>=2.0.0

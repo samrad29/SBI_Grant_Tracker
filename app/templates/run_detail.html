@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Run Details</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        .log {
+            padding: 8px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .INFO { background: #1e293b; }
+        .DEBUG { background: #020617; color: #94a3b8; }
+        .ERROR { background: #7f1d1d; }
+        .WARN { background: #78350f; }
+
+        a {
+            color: #38bdf8;
+        }
+    </style>
+</head>
+<body>
+
+<a href="/dashboard">← Back</a>
+
+<h1>Run #{{ run[0] }} ({{ run[3] }})</h1>
+
+<p><strong>Pipeline:</strong> {{ run[1] }}</p>
+<p><strong>Started:</strong> {{ run[4] }}</p>
+<p><strong>Finished:</strong> {{ run[5] }}</p>
+<p><strong>Processed:</strong> {{ run[6] }}</p>
+<p><strong>New:</strong> {{ run[7] }}</p>
+<p><strong>Updated:</strong> {{ run[8] }}</p>
+
+<h2>Logs</h2>
+
+{% for log in logs %}
+<div class="log {{ log[3] }}">
+    [{{ log[5] }}] {{ log[3] }} - {{ log[4] }}
+</div>
+{% endfor %}
+
+</body>
+</html>

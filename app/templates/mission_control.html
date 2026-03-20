@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mission Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            text-align: left;
+        }
+
+        th {
+            background: #020617;
+        }
+
+        tr:hover {
+            background: #334155;
+        }
+
+        .status-success {
+            color: #22c55e;
+            font-weight: bold;
+        }
+
+        .status-failed {
+            color: #ef4444;
+            font-weight: bold;
+        }
+
+        .status-running {
+            color: #facc15;
+            font-weight: bold;
+        }
+
+        a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<h1>🚀 Mission Control Dashboard</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Pipeline</th>
+            <th>Status</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>Processed</th>
+            <th>New</th>
+            <th>Updated</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in runs %}
+        <tr>
+            <td>{{ run[0] }}</td>
+            <td>{{ run[1] }}</td>
+
+            <td class="status-{{ run[3] }}">
+                {{ run[3] }}
+            </td>
+
+            <td>{{ run[4] }}</td>
+            <td>{{ run[5] }}</td>
+            <td>{{ run[6] }}</td>
+            <td>{{ run[7] }}</td>
+            <td>{{ run[8] }}</td>
+
+            <td>
+                <a href="/dashboard/run/{{ run[0] }}">View Logs</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>

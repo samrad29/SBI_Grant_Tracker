@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grants</title>
+</head>
+<body>
+
+<h1>Grants</h1>
+
+<ul id="grants-list"></ul>
+
+<script>
+async function loadGrants() {
+    const res = await fetch("/api/opportunities");
+    const data = await res.json();
+
+    const list = document.getElementById("grants-list");
+
+    data.forEach(grant => {
+        const li = document.createElement("li");
+
+        li.innerHTML = `
+            <a href="/grants/${grant.opportunity_id}">
+                ${grant.title} (${grant.status})
+            </a>
+        `;
+
+        list.appendChild(li);
+    });
+}
+
+loadGrants();
+</script>
+
+</body>
+</html>
