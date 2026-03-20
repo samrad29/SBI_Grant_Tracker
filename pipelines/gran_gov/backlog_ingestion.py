@@ -9,7 +9,7 @@ from pipelines.gran_gov.ingestion_utils import fetch_opportunity, normalize_oppo
 from pipelines.gran_gov.ai_utils import classify_grant, get_groq_client
 from pipelines.gran_gov.init_tables import create_tables
 from pipelines.gran_gov.quick_classification import quick_classification
-from db.db_util import get_db_connection
+from db.db_util import get_db_connection, is_test_mode
 
 
 def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0):
@@ -97,11 +97,12 @@ if __name__ == "__main__":
     print(f"Starting backlog ingestion at {start_time_str}")
     print("--------------------------------")
     print("Connecting to database...")
-    conn = get_db_connection()
+    test_mode = 1 if is_test_mode() else 0
+    conn = get_db_connection(test_mode=bool(test_mode))
     print("Creating tables...")
     create_tables(conn)
     print("Ingesting backlog...")
-    ingest_backlog(conn, test_mode=0)
+    ingest_backlog(conn, test_mode=test_mode)
     print("Committing changes...")
     conn.commit()
     print("Closing database connection...")

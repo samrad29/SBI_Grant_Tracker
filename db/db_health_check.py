@@ -1,10 +1,10 @@
-from db.db_util import get_db_connection
+from db.db_util import get_db_connection, is_test_mode
 
 def db_health_check():
     """
     Check the health of the database
     """
-    conn = get_db_connection(test_mode=True)
+    conn = get_db_connection(test_mode=is_test_mode())
     cursor = conn.cursor()
     # Print table names
     print("Table names:")

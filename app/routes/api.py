@@ -34,7 +34,7 @@ def get_opportunities():
     Returns:
         list of opportunities
     """
-    conn = get_db_connection(test_mode=True)
+    conn = get_db_connection(test_mode=TEST_MODE)
     cursor = conn.cursor()
     cursor.execute("SELECT opportunity_id, title, agency, status FROM grants limit 50")
     opportunities = _rows_to_dicts(cursor)
@@ -47,7 +47,7 @@ def get_opportunity_by_id(opportunity_id):
     Returns:
         opportunity
     """
-    conn = get_db_connection(test_mode=True)
+    conn = get_db_connection(test_mode=TEST_MODE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM grants WHERE opportunity_id = ?", (opportunity_id,))
     opportunity = _row_to_dict(cursor)
@@ -62,7 +62,7 @@ def get_alerts():
     Returns:
         list of alerts
     """
-    conn = get_db_connection(test_mode=True)
+    conn = get_db_connection(test_mode=TEST_MODE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM grant_alerts limit 50")
     alerts = _rows_to_dicts(cursor)

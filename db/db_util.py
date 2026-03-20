@@ -1,4 +1,13 @@
 import sqlite3
+import os
+
+def is_test_mode() -> bool:
+    """
+    Resolve TEST_MODE from environment.
+    Truthy: true, 1, yes, y (case-insensitive)
+    """
+    raw = (os.getenv("TEST_MODE") or "").strip().lower()
+    return raw in {"true", "1", "yes", "y"}
 
 def get_db_connection(test_mode: bool = False):
     """
