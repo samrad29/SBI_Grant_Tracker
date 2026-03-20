@@ -3,13 +3,19 @@ Routes for the mission control dashboard
 """
 from flask import Blueprint, render_template, request
 from db.db_util import get_db_connection
+import os
+TEST_MODE = os.getenv("TEST_MODE", "False")
+if TEST_MODE == "True":
+    TEST_MODE = True
+else:
+    TEST_MODE = False
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
 
 @dashboard_bp.route("/dashboard")
 def dashboard():
-    conn = get_db_connection(test_mode=True)
+    conn = get_db_connection(test_mode=TEST_MODE)
 
     runs = conn.execute("""
         SELECT *
@@ -23,7 +29,7 @@ def dashboard():
 
 @dashboard_bp.route("/dashboard/run/<int:run_id>")
 def view_run(run_id):
-    conn = get_db_connection(test_mode=True)
+    conn = get_db_connection(test_mode=TEST_MODE)
 
     run = conn.execute("""
         SELECT *

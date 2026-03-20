@@ -4,6 +4,12 @@ API Routes used by the frontend/UI
 from flask import Blueprint, jsonify
 from flask import request
 from db.db_util import get_db_connection
+import os
+TEST_MODE = os.getenv("TEST_MODE", "False")
+if TEST_MODE == "True":
+    TEST_MODE = True
+else:
+    TEST_MODE = False
 
 api_bp = Blueprint("api", __name__)
 
