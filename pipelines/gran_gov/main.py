@@ -5,6 +5,7 @@ from pipelines.gran_gov.ingestion_loop import daily_ingestion
 from pipelines.gran_gov.ingestion_utils import trim_opportunity_ids, update_last_seen_at, archive_old_grants
 from jobs.log_utils import log
 from db.db_util import is_test_mode
+import os
 
 SEARCH_URL = "https://api.grants.gov/v1/api/search2"
 
@@ -45,7 +46,10 @@ def get_opportunity_ids(keywords: list[str] = [""], eligibilities: str = "",test
 def grants_main(conn: sqlite3.Connection, job_id: int) -> None:
     print("Starting daily grant ingestion loop...")
     create_tables(conn)
-    test_mode = 1 if is_test_mode() else 0
+    if os.getenv("TEST_5_IDS") == "False":
+        test_mode = 0
+    else:
+        test_mode = 1
 
     #1: get all active/forecasted opportunity ids from the API
     opportunity_ids = get_opportunity_ids(test_mode=test_mode)
