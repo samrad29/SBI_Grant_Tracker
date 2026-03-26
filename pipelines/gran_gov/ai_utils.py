@@ -8,20 +8,106 @@ from dotenv import load_dotenv
 import json
 import os
 from datetime import datetime
+from typing import Optional
+import httpx
 load_dotenv()
 
 # NOTE: when we productionalize this, we will want to get the API key from the environment variables
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL")
+LLM_PROVIDER = (os.getenv("LLM_PROVIDER") or "groq").strip().lower()
+
+# Ollama settings (used only when LLM_PROVIDER=ollama)
+OLLAMA_BASE_URL = (os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434").strip().rstrip("/")
+# Typical tags look like `llama3.1:8b-instruct`. Adjust if yours differs.
+OLLAMA_MODEL = (os.getenv("OLLAMA_MODEL") or "llama3.2:latest").strip()
 
 def get_groq_client():
     if not GROQ_API_KEY:
         raise RuntimeError(
             "Missing Groq API key. Set GROQ_API_KEY in your environment (or .env)."
         )
-    return Groq(api_key=GROQ_API_KEY)
+    return Groq(api_key=GROQ_API_KEY, max_retries=0)
 
-def ai_grant_tagging(groq_client, grant):
+class RateLimitError(Exception):
+    """Raised when the upstream AI provider returns HTTP 429."""
+
+    def __init__(self, retry_seconds: float, message: str = "Rate limited"):
+        super().__init__(message)
+        self.retry_seconds = retry_seconds
+
+
+def _parse_retry_after_seconds(value: Optional[str], default_seconds: float = 10.0) -> float:
+    if not value:
+        return default_seconds
+    value = value.strip()
+    if not value:
+        return default_seconds
+    try:
+        return float(value)
+    except ValueError:
+        return default_seconds
+
+
+class GroqLLMClient:
+    """Wrapper around the Groq chat completions API."""
+    def __init__(self):
+        self._client = get_groq_client()
+
+    def complete(self, prompt: str) -> str:
+        try:
+            response = self._client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+            )
+            content = response.choices[0].message.content
+            return content or ""
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code == 429:
+                retry_after = _parse_retry_after_seconds(
+                    e.response.headers.get("Retry-After")
+                )
+                raise RateLimitError(retry_after, f"Groq 429 rate limit. Retrying in {retry_after}s")
+            raise
+
+
+class OllamaLLMClient:
+    """Calls the local Ollama HTTP API."""
+    def __init__(self):
+        self._base_url = OLLAMA_BASE_URL
+        self._model = OLLAMA_MODEL
+        self._client = httpx.Client(timeout=120)
+
+    def complete(self, prompt: str) -> str:
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {"temperature": 0},
+        }
+        url = f"{self._base_url}/api/chat"
+        try:
+            resp = self._client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            return (data.get("message") or {}).get("content") or ""
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code == 429:
+                retry_after = _parse_retry_after_seconds(
+                    e.response.headers.get("Retry-After")
+                )
+                raise RateLimitError(retry_after, f"Ollama 429 rate limit. Retrying in {retry_after}s")
+            raise
+
+
+def get_llm_client():
+    if LLM_PROVIDER == "ollama":
+        return OllamaLLMClient()
+    return GroqLLMClient()
+
+
+def ai_grant_tagging(llm_client, grant):
     prompt = f"""
         You are classifying a government grant into categories.
 
@@ -68,22 +154,17 @@ def ai_grant_tagging(groq_client, grant):
         deadline description:
         {grant.get("deadline_description", "")}
     """
+    content = llm_client.complete(prompt)
+    if not content:
+        print("No content returned from AI")
+        return None
     try:
-        response = groq_client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        content = response.choices[0].message.content
-        if not content:
-            print("No content returned from AI")
-            return None
         return json.loads(content)
     except Exception as e:
-        print("Error in ai_grant_tagging:", e)
+        print("Error parsing JSON in ai_grant_tagging:", e)
         return None
 
-def ai_tribal_eligibility_check(groq_client, grant):
+def ai_tribal_eligibility_check(llm_client, grant):
     prompt = f"""
         You are evaluating whether a Native American tribal government is eligible for a federal grant.
 
@@ -110,32 +191,19 @@ def ai_tribal_eligibility_check(groq_client, grant):
         }}
         """
 
+    content = llm_client.complete(prompt)
+    if not content:
+        print("No content returned from AI")
+        return None
     try:
-        response = groq_client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            print("No content returned from AI")
-            return None
         return json.loads(content)
-
     except Exception as e:
-        print("Error in ai_tribal_eligibility_check:", e)
+        print("Error parsing JSON in ai_tribal_eligibility_check:", e)
         return None
 
 def test_groq():
-    groq = get_groq_client()
-    response = groq.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[
-            {"role": "user", "content": "Hello, how are you?"}
-        ]
-    )
-    print(response.choices[0].message.content)
+    llm = get_llm_client()
+    print(llm.complete("Return exactly: 1"))
 
 if __name__ == "__main__":
     test_groq()

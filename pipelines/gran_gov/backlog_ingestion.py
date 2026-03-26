@@ -6,7 +6,7 @@ import time
 from pipelines.gran_gov.main import get_opportunity_ids
 from pipelines.gran_gov.ingestion_loop import upsert_grant_current, insert_snapshot
 from pipelines.gran_gov.ingestion_utils import fetch_opportunity, normalize_opportunity, update_tribal_eligibility, update_grant_tags
-from pipelines.gran_gov.ai_utils import ai_grant_tagging, ai_tribal_eligibility_check, get_groq_client
+from pipelines.gran_gov.ai_utils import ai_grant_tagging, ai_tribal_eligibility_check, get_llm_client, RateLimitError
 from pipelines.gran_gov.init_tables import create_tables
 from pipelines.gran_gov.quick_classification import quick_classification
 from jobs.log_utils import log
@@ -27,18 +27,23 @@ def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0):
     opportunity_ids = get_opportunity_ids(test_mode=test_mode)
     print(f"Found {len(opportunity_ids)} opportunity ids.")
 
-    #2: check if the opportunity ID is already in the database
+    #2: check if the opportunity ID is already in the database and has tags
     existing_ids = {
         row[0] for row in conn.execute(
-            "SELECT opportunity_id FROM grants"
+            "SELECT distinct opportunity_id FROM grant_tags"
         ).fetchall()
     }
     new_ids = [oid for oid in opportunity_ids if oid not in existing_ids]
-    print(f"Found {len(new_ids)} new opportunity ids.")
+    print(f"Found {len(new_ids)} untagged opportunity ids.")
 
     #3: Pull the details for each opportunity id and put into DB
-    groq_client = get_groq_client()
-    for i, opportunity_id in enumerate(new_ids):
+    llm_client = get_llm_client()
+    i = 0
+    max_failures = 25
+    retry_count = 0
+    batch_size = 300
+    while i < len(new_ids) and i < batch_size:
+        opportunity_id = new_ids[i]
         try:
             print("--------------------------------")
             raw = fetch_opportunity(opportunity_id)
@@ -65,7 +70,7 @@ def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0):
             if quick_check_result["needs_ai"]:
                 ai_used +=1
                 print("Sending to AI for further classification")
-                ai_result = ai_tribal_eligibility_check(groq_client, normalized)
+                ai_result = ai_tribal_eligibility_check(llm_client, normalized)
                 if ai_result is None:
                     print("AI classification failed (returned None); skipping.")
                 else:
@@ -74,9 +79,10 @@ def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0):
                     if ai_result.get("is_tribal_eligible"):
                         ai_labelled_relevant += 1
             #6: Tag the grant
-            ai_result = ai_grant_tagging(groq_client, normalized)
+            ai_result = ai_grant_tagging(llm_client, normalized)
             if ai_result is None:
                 print("AI tagging failed (returned None); skipping.")
+                failed += 1
             else:
                 update_grant_tags(conn, opportunity_id, ai_result, -1) # job_id -1 means no job_id (for backlog ingestion)
                 print(f"AI tagging result: {ai_result}")
@@ -85,10 +91,35 @@ def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0):
                 conn.commit()
             if i % 10 == 0: 
                 time.sleep(0.5)
+            i += 1
+            retry_count = 0
+            if failed > max_failures:
+                print(f"Failed to ingest {failed} grants after {max_failures} failures. Stopping ingestion...")
+                break
 
+        except RateLimitError as e:
+            pause_s = float(getattr(e, "retry_seconds", 10.0) or 10.0)
+            print(f"Hit AI 429 rate limit. Pausing ingestion for {pause_s:.1f}s and retrying...")
+            if retry_count < 3:
+                retry_count += 1
+                time.sleep(pause_s)
+                continue
+            else:
+                print(f"Failed to ingest grant {opportunity_id} after 3 retries. Skipping...")
+                failed += 1
+                if failed > max_failures:
+                    print(f"Failed to ingest {failed} grants after {max_failures} failures. Stopping ingestion...")
+                    break
+                else:
+                    i += 1
+                    continue
         except Exception as e:
             print(f"Error processing grant {opportunity_id}: {e}")
             failed += 1
+            if failed > max_failures:
+                print(f"Failed to ingest {failed} grants after {max_failures} failures. Stopping ingestion...")
+                break
+            i += 1
             continue
 
     print("--------------------------------")

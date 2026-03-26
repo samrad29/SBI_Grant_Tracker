@@ -2,10 +2,11 @@ import hashlib
 import json
 import sqlite3
 from datetime import datetime, timezone
+import time
 from typing import Any, Optional
 from pipelines.gran_gov.ingestion_utils import fetch_opportunity, normalize_opportunity, update_tribal_eligibility, update_grant_tags
 from pipelines.gran_gov.change_detection import detect_changes
-from pipelines.gran_gov.ai_utils import ai_tribal_eligibility_check, get_groq_client, ai_grant_tagging
+from pipelines.gran_gov.ai_utils import ai_tribal_eligibility_check, get_llm_client, ai_grant_tagging, RateLimitError
 from pipelines.gran_gov.quick_classification import quick_classification
 from jobs.log_utils import log
 
@@ -168,12 +169,14 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
     """
     conn.execute("BEGIN")
     try:
-        groq_client = get_groq_client()
+        llm_client = get_llm_client()
         ingestion_count = 0
         new_grants = 0
         new_relevant_grants = 0
         grants_with_alerts = 0
-        for oid in opportunity_ids:
+        i = 0
+        while i < len(opportunity_ids):
+            oid = opportunity_ids[i]
             try: 
                 raw = fetch_opportunity(oid)                 # call fetchOpportunity
                 normalized = normalize_opportunity(raw)    # map to your dict shape
@@ -189,7 +192,7 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                 new_hash = insert_snapshot(conn, str(oid), normalized)
 
                 # Update the grant tags (maybe move this to a weekly ingestion loop)
-                ai_result = ai_grant_tagging(groq_client, normalized)
+                ai_result = ai_grant_tagging(llm_client, normalized)
                 if ai_result is not None:
                     update_grant_tags(conn, str(oid), ai_result, job_id)
                     log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
@@ -204,7 +207,7 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                         log(conn, job_id, f"Identified as new grant and classified as tribal eligible by quick classification for opportunity id: {oid}", "INFO")
                         new_relevant_grants += 1
                     else: 
-                        classification = ai_tribal_eligibility_check(groq_client, normalized)
+                        classification = ai_tribal_eligibility_check(llm_client, normalized)
                         if classification is not None and classification["is_tribal_eligible"]:
                             update_tribal_eligibility(conn, str(oid), classification)
                             log(conn, job_id, f"Identified as new grant and classified as tribal eligible by AIfor opportunity id: {oid}", "INFO")
@@ -215,6 +218,7 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                     
                 old_hash = prev["hash"]
                 if old_hash == new_hash:
+                    i += 1
                     continue
 
                 old_data = json.loads(prev["data_json"])
@@ -249,8 +253,15 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                     grants_with_alerts += 1
                 else:
                     log(conn, job_id, f"No alerts changes for opportunity id: {oid}", "INFO")
+                i += 1
+            except RateLimitError as e:
+                pause_s = float(getattr(e, "retry_seconds", 10.0) or 10.0)
+                log(conn, job_id, f"Hit AI 429 rate limit. Pausing for {pause_s:.1f}s then retrying oid={oid}", "WARN")
+                time.sleep(pause_s)
+                # Important: do NOT increment i; retry same oid.
             except Exception as e:
                 log(conn, job_id, f"Error in daily ingestion for opportunity id: {oid}: {e}", "ERROR")
+                i += 1
                 continue
         log(conn, job_id, f"Ingestion completed with {ingestion_count} grants, {new_grants} new grants, {new_relevant_grants} new relevant grants, and {grants_with_alerts} grants with alerts.", "INFO")
         conn.commit()
