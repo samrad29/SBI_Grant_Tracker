@@ -191,11 +191,12 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                 # Insert new snapshot and compute hash for dedupe
                 new_hash = insert_snapshot(conn, str(oid), normalized)
 
-                # Update the grant tags (maybe move this to a weekly ingestion loop)
-                ai_result = ai_grant_tagging(llm_client, normalized)
-                if ai_result is not None:
-                    update_grant_tags(conn, str(oid), ai_result, job_id)
-                    log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
+                # This code could be sued to update the grant tags 
+                #   Commenting it out for now because it is very slow and burns through tokens (or literally burns my laptop)
+                # ai_result = ai_grant_tagging(llm_client, normalized)
+                # if ai_result is not None:
+                #     update_grant_tags(conn, str(oid), ai_result, job_id)
+                #     log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
 
                 # If there is no previous snapshot, we can skip the diffing process. However, we will need to classify the grant as relevant or not.
                 if prev is None:
