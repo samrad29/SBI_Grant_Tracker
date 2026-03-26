@@ -14,7 +14,7 @@ from db.db_util import get_db_connection, is_test_mode
 from jobs.log_utils import create_pipeline_run
 
 
-def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0, job_id: int = 0):
+def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0):
     """
     Ingests the backlog of grants from the grant.gov API.
     """
@@ -60,7 +60,6 @@ def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0, job_id: int = 0
             if quick_check_result["is_tribal_eligible"]:
                 update_tribal_eligibility(conn, opportunity_id, quick_check_result)
                 quick_labelled_relevant += 1
-                continue
             
             #5: If the grant is not relevant, send it to AI for further classification
             if quick_check_result["needs_ai"]:
@@ -79,7 +78,7 @@ def ingest_backlog(conn: sqlite3.Connection, test_mode: int = 0, job_id: int = 0
             if ai_result is None:
                 print("AI tagging failed (returned None); skipping.")
             else:
-                update_grant_tags(conn, opportunity_id, ai_result, job_id)
+                update_grant_tags(conn, opportunity_id, ai_result, -1) # job_id -1 means no job_id (for backlog ingestion)
                 print(f"AI tagging result: {ai_result}")
 
             if i % 50 == 0: 
@@ -111,10 +110,8 @@ if __name__ == "__main__":
     conn = get_db_connection(test_mode=bool(test_mode))
     print("Creating tables...")
     create_tables(conn)
-    print("Creating pipeline run...")
-    job_id = create_pipeline_run(conn, "grants", "backlog")
     print("Ingesting backlog...")
-    ingest_backlog(conn, test_mode=test_mode, job_id=job_id)
+    ingest_backlog(conn, test_mode=test_mode)
     print("Committing changes...")
     conn.commit()
     print("Closing database connection...")

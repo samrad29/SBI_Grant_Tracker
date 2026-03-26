@@ -174,6 +174,7 @@ def update_tribal_eligibility(conn: sqlite3.Connection, opportunity_id: str, tri
 def update_grant_tags(conn: sqlite3.Connection, opportunity_id: str, ai_result: dict, job_id: int):
     """
     Update the tags for a given opportunity.
+    If job_id is -1, it means no job_id (for backlog ingestion)
     """
     try:
         tags = ai_result.get("tags", [])
@@ -193,9 +194,11 @@ def update_grant_tags(conn: sqlite3.Connection, opportunity_id: str, ai_result: 
                 tag.get("score"),
                 datetime.now().isoformat(),
             ),)
+            if job_id != -1:
+                log(conn, job_id, f"New grant tag: {tag.get('tag')} for opportunity id: {opportunity_id}", "INFO")
         conn.commit()
 
-        new_tags = tags.get("new_tags", [])
+        new_tags = ai_result.get("new_tags", [])
         for tag in new_tags:
             conn.execute("""
                 INSERT INTO grant_tags (
@@ -212,10 +215,13 @@ def update_grant_tags(conn: sqlite3.Connection, opportunity_id: str, ai_result: 
                 tag.get("score"),
                 datetime.now().isoformat(),
             ),)
-            log(conn, job_id, f"Non-standard grant tag: {tag.get('tag')}", "INFO")
+            if job_id != -1:
+                log(conn, job_id, f"Non-standard grant tag: {tag.get('tag')} for opportunity id: {opportunity_id}", "INFO")
         conn.commit()
     except Exception as e:
         print(f"Error updating grant tags: {e}")
+        if job_id != -1:
+            log(conn, job_id, f"Error updating grant tags: {e}", "ERROR")
         conn.rollback()
         raise
 def update_last_seen_at(opportunity_ids: list[str], conn: sqlite3.Connection, job_id: int) -> None:

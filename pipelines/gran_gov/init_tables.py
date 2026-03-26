@@ -106,10 +106,10 @@ CREATE TABLE IF NOT EXISTS tribal_eligibility (
     ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_grant_classifications_opportunity_id
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_tribal_eligibility_opportunity_id
 ON tribal_eligibility(opportunity_id);
 
-CREATE TABLE IS NOT EXISTS grant_tags (
+CREATE TABLE IF NOT EXISTS grant_tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   opportunity_id TEXT NOT NULL,
   tag TEXT NOT NULL,
@@ -121,7 +121,7 @@ CREATE TABLE IS NOT EXISTS grant_tags (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_grant_tags_opportunity_id
 ON grant_tags(opportunity_id, tag);
 
-CREATE TABLE user_grant_activity (
+CREATE TABLE IF NOT EXISTS user_grant_activity (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   opportunity_id TEXT NOT NULL,

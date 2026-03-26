@@ -1,21 +1,15 @@
 """
 Routes for the mission control dashboard
 """
-from flask import Blueprint, render_template, request
-from db.db_util import get_db_connection
-import os
-TEST_MODE = os.getenv("TEST_MODE", "False")
-if TEST_MODE == "True":
-    TEST_MODE = True
-else:
-    TEST_MODE = False
+from flask import Blueprint, render_template
+from db.db_util import get_db_connection, is_test_mode
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
 
 @dashboard_bp.route("/dashboard")
 def dashboard():
-    conn = get_db_connection(test_mode=TEST_MODE)
+    conn = get_db_connection(test_mode=is_test_mode())
 
     runs = conn.execute("""
         SELECT *
@@ -29,7 +23,7 @@ def dashboard():
 
 @dashboard_bp.route("/dashboard/run/<int:run_id>")
 def view_run(run_id):
-    conn = get_db_connection(test_mode=TEST_MODE)
+    conn = get_db_connection(test_mode=is_test_mode())
 
     run = conn.execute("""
         SELECT *
@@ -51,6 +45,26 @@ def view_run(run_id):
     )
 
 
+@dashboard_bp.route("/dashboard/grant_tags")
+def grant_tags_page():
+    conn = get_db_connection(test_mode=is_test_mode())
+    grant_tags = conn.execute("""
+        SELECT tag, count(*) as count
+        FROM grant_tags
+        GROUP BY tag
+        ORDER BY count DESC
+    """).fetchall()
+    return render_template("grant_tags.html", grant_tags=grant_tags)
+
+@dashboard_bp.route("/dashboard/grant_tags/<tag>")
+def grant_tag_detail_page(tag):
+    conn = get_db_connection(test_mode=is_test_mode())
+    grant_tags = conn.execute("""
+        SELECT *
+        FROM grant_tags
+        WHERE tag = ?
+    """, (tag,)).fetchall()
+    return render_template("grant_tag_details.html", grant_tags=grant_tags)
 
 @dashboard_bp.route("/grants")
 def grants_page():

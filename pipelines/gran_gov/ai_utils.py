@@ -7,7 +7,7 @@ from groq import Groq
 from dotenv import load_dotenv
 import json
 import os
-
+from datetime import datetime
 load_dotenv()
 
 # NOTE: when we productionalize this, we will want to get the API key from the environment variables
@@ -29,25 +29,44 @@ def ai_grant_tagging(groq_client, grant):
         1. Assign relevance scores (0-100) to the predefined categories below
         2. Optionally suggest up to 3 NEW categories if the predefined ones are insufficient
 
-        Predefined categories: Housing, Tribal, Gaming, Cannabis, Environment, Agriculture, Broadband, Technology, Infrastructure, workforce_development
+        Predefined categories: Housing, Tribal, Gaming, Cannabis, Environment, Agriculture, Broadband, Technology, Infrastructure, workforce_development, accepting_applications
 
         Rules:
+        - Accepting applications is a special category used to indicate that the grant is currently accepting applications as of {datetime.now().strftime("%Y-%m-%d")}
         - Prefer predefined categories whenever possible
         - Only create a new category if it captures something important not covered above
         - New categories must be concise (1-3 words, snake_case)
         - Do NOT create synonyms of existing categories
         - Avoid overly specific categories (e.g., "solar_panel_installation_grants")
 
-        Return JSON in this format:
-        {
+        Respond ONLY with valid JSON in this format:
+        {{
         "tags": [
-            {"tag": "energy", "score": 85},
-            {"tag": "tribal", "score": 60}
+            {{"tag": "energy", "score": 85}},
+            {{"tag": "tribal", "score": 60}}
         ],
         "new_tags": [
-            {"tag": "disaster_recovery", "score": 75}
+            {{"tag": "disaster_recovery", "score": 75}}
         ]
-        }
+        }}
+
+        Grant Title:
+        {grant["title"]}
+
+        Grant Description:
+        {grant.get("description", "")[:1500]}
+
+        Eligibility Codes:
+        {grant.get("eligibilities", [])}
+
+        Eligibility Description:
+        {grant.get("eligibility_description", "")}
+
+        deadline date:
+        {grant.get("deadline_date", "")}
+
+        deadline description:
+        {grant.get("deadline_description", "")}
     """
     try:
         response = groq_client.chat.completions.create(
@@ -84,7 +103,7 @@ def ai_tribal_eligibility_check(groq_client, grant):
 
         Return:
         {{
-        "MODEL": "{GROQ_MODEL}",
+        "model": "{GROQ_MODEL}",
         "is_tribal_eligible": true/false,
         "eligibility_score": 0-100,
         "eligibility_reasoning": ""

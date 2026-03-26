@@ -3,9 +3,9 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Optional
-from pipelines.gran_gov.ingestion_utils import fetch_opportunity, normalize_opportunity, update_grant_classification
+from pipelines.gran_gov.ingestion_utils import fetch_opportunity, normalize_opportunity, update_tribal_eligibility, update_grant_tags
 from pipelines.gran_gov.change_detection import detect_changes
-from pipelines.gran_gov.ai_utils import classify_grant, get_groq_client
+from pipelines.gran_gov.ai_utils import ai_tribal_eligibility_check, get_groq_client, ai_grant_tagging
 from pipelines.gran_gov.quick_classification import quick_classification
 from jobs.log_utils import log
 
@@ -188,22 +188,31 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                 # Insert new snapshot and compute hash for dedupe
                 new_hash = insert_snapshot(conn, str(oid), normalized)
 
+                # Update the grant tags (maybe move this to a weekly ingestion loop)
+                ai_result = ai_grant_tagging(groq_client, normalized)
+                if ai_result is not None:
+                    update_grant_tags(conn, str(oid), ai_result, job_id)
+                    log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
+
                 # If there is no previous snapshot, we can skip the diffing process. However, we will need to classify the grant as relevant or not.
                 if prev is None:
                     # Classify the grant as relevant or not
                     new_grants += 1
                     quick_check_result = quick_classification(normalized)
-                    if quick_check_result["is_relevant"]:
-                        update_grant_classification(conn, str(oid), quick_check_result)
-                        log(conn, job_id, f"Identified as new grant and classified as relevant for opportunity id: {oid}", "INFO")
+                    if quick_check_result["is_tribal_eligible"]:
+                        update_tribal_eligibility(conn, str(oid), quick_check_result)
+                        log(conn, job_id, f"Identified as new grant and classified as tribal eligible by quick classification for opportunity id: {oid}", "INFO")
                         new_relevant_grants += 1
-                        continue
                     else: 
-                        classification = classify_grant(groq_client, normalized)
-                        update_grant_classification(conn, str(oid), classification)
-                        log(conn, job_id, f"Identified as new grant and classified as not relevant for opportunity id: {oid}", "INFO")
-                        continue
-
+                        classification = ai_tribal_eligibility_check(groq_client, normalized)
+                        if classification is not None and classification["is_tribal_eligible"]:
+                            update_tribal_eligibility(conn, str(oid), classification)
+                            log(conn, job_id, f"Identified as new grant and classified as tribal eligible by AIfor opportunity id: {oid}", "INFO")
+                            new_relevant_grants += 1
+                        else:
+                            update_tribal_eligibility(conn, str(oid), quick_check_result)
+                            log(conn, job_id, f"Identified as new grant and classified as not relevant for opportunity id: {oid}", "INFO")
+                    
                 old_hash = prev["hash"]
                 if old_hash == new_hash:
                     continue

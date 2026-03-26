@@ -3,13 +3,7 @@ API Routes used by the frontend/UI
 """
 from flask import Blueprint, jsonify
 from flask import request
-from db.db_util import get_db_connection
-import os
-TEST_MODE = os.getenv("TEST_MODE", "False")
-if TEST_MODE == "True":
-    TEST_MODE = True
-else:
-    TEST_MODE = False
+from db.db_util import get_db_connection, is_test_mode
 
 api_bp = Blueprint("api", __name__)
 
@@ -34,7 +28,7 @@ def get_opportunities():
     Returns:
         list of opportunities
     """
-    conn = get_db_connection(test_mode=TEST_MODE)
+    conn = get_db_connection(test_mode=is_test_mode())
     cursor = conn.cursor()
     cursor.execute("SELECT opportunity_id, title, agency, status FROM grants limit 50")
     opportunities = _rows_to_dicts(cursor)
@@ -47,7 +41,7 @@ def get_opportunity_by_id(opportunity_id):
     Returns:
         opportunity
     """
-    conn = get_db_connection(test_mode=TEST_MODE)
+    conn = get_db_connection(test_mode=is_test_mode())
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM grants WHERE opportunity_id = ?", (opportunity_id,))
     opportunity = _row_to_dict(cursor)
@@ -62,7 +56,7 @@ def get_alerts():
     Returns:
         list of alerts
     """
-    conn = get_db_connection(test_mode=TEST_MODE)
+    conn = get_db_connection(test_mode=is_test_mode())
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM grant_alerts limit 50")
     alerts = _rows_to_dicts(cursor)

@@ -34,7 +34,13 @@
             background: #334155;
         }
 
-        .status-success {
+        /* pipeline_runs.status: running | completed | failed (and unknown fallback) */
+        .status-running {
+            color: #facc15;
+            font-weight: bold;
+        }
+
+        .status-completed {
             color: #22c55e;
             font-weight: bold;
         }
@@ -44,8 +50,8 @@
             font-weight: bold;
         }
 
-        .status-running {
-            color: #facc15;
+        .status-unknown {
+            color: #94a3b8;
             font-weight: bold;
         }
 
@@ -58,6 +64,8 @@
 <body>
 
 <h1>🚀 Mission Control Dashboard</h1>
+
+<h2><a href="/dashboard/grant_tags">Grant Tagging Results</a></h2>
 
 <table>
     <thead>
@@ -75,22 +83,23 @@
     </thead>
     <tbody>
         {% for run in runs %}
+        {% set st = ((run['status'] or 'unknown')|trim|lower)|replace(' ', '-') %}
         <tr>
-            <td>{{ run[0] }}</td>
-            <td>{{ run[1] }}</td>
+            <td>{{ run['id'] }}</td>
+            <td>{{ run['pipeline_name'] }}</td>
 
-            <td class="status-{{ run[3] }}">
-                {{ run[3] }}
+            <td class="status-{{ st }}">
+                {{ run['status'] }}
             </td>
 
-            <td>{{ run[4] }}</td>
-            <td>{{ run[5] }}</td>
-            <td>{{ run[6] }}</td>
-            <td>{{ run[7] }}</td>
-            <td>{{ run[8] }}</td>
+            <td>{{ run['started_at'] }}</td>
+            <td>{{ run['finished_at'] }}</td>
+            <td>{{ run['records_processed'] }}</td>
+            <td>{{ run['new_records'] }}</td>
+            <td>{{ run['updated_records'] }}</td>
 
             <td>
-                <a href="/dashboard/run/{{ run[0] }}">View Logs</a>
+                <a href="/dashboard/run/{{ run['id'] }}">View Logs</a>
             </td>
         </tr>
         {% endfor %}

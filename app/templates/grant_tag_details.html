@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mission Control - Grant Tags</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            text-align: left;
+        }
+
+        th {
+            background: #020617;
+        }
+
+        tr:hover {
+            background: #334155;
+        }
+
+        a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Grant Tag Details</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Opportunity ID</th>
+                <th>Tag</th>
+                <th>Score</th>
+                <th>Created At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in grant_tags %}
+            <tr>
+                <td><a href="/grants/{{ row['opportunity_id'] }}">{{ row['opportunity_id'] }}</a></td>
+                <td>{{ row['tag'] }}</td>
+                <td>{{ row['tag_score'] }}</td>
+                <td>{{ row['created_at'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

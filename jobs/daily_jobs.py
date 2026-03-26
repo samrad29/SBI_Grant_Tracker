@@ -1,17 +1,10 @@
 from pipelines.gran_gov.main import grants_main
-from db.db_util import get_db_connection
+from db.db_util import get_db_connection, is_test_mode
 from jobs.init_tables import create_pipeline_tables
 from jobs.log_utils import create_pipeline_run
 from jobs.log_utils import update_pipeline_run
 from jobs.log_utils import log
 from datetime import datetime
-import os
-
-TEST_MODE = os.getenv("TEST_MODE", "False")
-if TEST_MODE == "True":
-    TEST_MODE = True
-else:
-    TEST_MODE = False
 
 if __name__ == "__main__":
     print("Starting daily jobs...")
@@ -19,7 +12,7 @@ if __name__ == "__main__":
     daily_start_time = datetime.now()
     daily_start_time_str = daily_start_time.strftime('%Y-%m-%d %H:%M:%S')
     print(f"Daily jobs started at {daily_start_time_str}")
-    conn = get_db_connection(test_mode=TEST_MODE)
+    conn = get_db_connection(test_mode=is_test_mode())
     print("Creating tables...")
     create_pipeline_tables(conn)
     print("--------------------------------")

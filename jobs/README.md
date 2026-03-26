@@ -21,5 +21,6 @@ python -m jobs.daily_jobs
 > `daily_jobs.py` may use `test_mode=True` when connecting (see `get_db_connection` in `db/db_util.py`) — adjust there if you want production `grants.db` for scheduled runs.
 
 ## Planned
-
 - **`weekly_jobs.py`** (or similar) for weekly pipelines once defined.
+- Move the grant tagging (for already seen grants) to the weekly job to reduce use of AI slightly
+- Weekly job can also review the updated grants to see if they are still tribal eligible (maybe do this daily?)

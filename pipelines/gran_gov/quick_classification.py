@@ -23,37 +23,46 @@ def text_contains_keywords(text, keywords):
 
 
 def quick_classification(normalized: dict):
-    TRIBAL_CODES = {"07", "11", "09"}
-    is_tribal_eligible = False
-    eligibility_score = 0
-    eligibility_reasoning = ""
-    model = "quick_classification"
-    needs_ai = False
-    tags = []
+    try: 
+        TRIBAL_CODES = {"07", "11", "09"}
+        is_tribal_eligible = False
+        eligibility_score = 0
+        eligibility_reasoning = ""
+        model = "quick_classification"
+        needs_ai = True
 
-    eligibilities = safe_json_load(normalized.get("eligibilities", ""))
-    categories = safe_json_load(normalized.get("funding_categories", ""))
+        eligibilities = safe_json_load(normalized.get("eligibilities", ""))
 
-    # --- 1. Eligibility check ---
-    has_tribal = any(e.get("id") in TRIBAL_CODES for e in eligibilities)
-    has_tribal_description = text_contains_keywords(
-        (normalized.get("eligibility_description") or ""), ["tribal", "tribes", "native"]
-    )
+        # --- 1. Eligibility check ---
+        has_tribal = any(e.get("id") in TRIBAL_CODES for e in eligibilities)
+        has_tribal_description = text_contains_keywords(
+            (normalized.get("eligibility_description") or ""), ["tribal", "tribes", "native"]
+        )
 
-    if has_tribal:
-        is_tribal_eligible = True
-        eligibility_score = 100
-        eligibility_reasoning = "Eligibility Codes contain tribal code"
+        if has_tribal:
+            is_tribal_eligible = True
+            eligibility_score = 100
+            eligibility_reasoning = "Eligibility Codes contain tribal code"
+            needs_ai = False
+        elif has_tribal_description:
+            is_tribal_eligible = True
+            eligibility_score = 100
+            eligibility_reasoning = "Eligibility description contains tribal codes"
+            needs_ai = False
 
-    elif has_tribal_description:
-        is_tribal_eligible = True
-        eligibility_score = 100
-        eligibility_reasoning = "Eligibility description contains tribal codes"
-
-    return {
-        "eligibility_score": eligibility_score,
-        "eligibility_reasoning": eligibility_reasoning,
-        "is_tribal_eligible": is_tribal_eligible,
-        "model": model,
-        "needs_ai": needs_ai
-    }
+        return {
+            "eligibility_score": eligibility_score,
+            "eligibility_reasoning": eligibility_reasoning,
+            "is_tribal_eligible": is_tribal_eligible,
+            "model": model,
+            "needs_ai": needs_ai
+        }
+    except Exception as e:
+        print(f"Error in quick_classification: {e}")
+        return {
+            "eligibility_score": 0,
+            "eligibility_reasoning": "",
+            "is_tribal_eligible": False,
+            "model": model,
+            "needs_ai": True
+        }
