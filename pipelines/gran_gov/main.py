@@ -43,8 +43,14 @@ def get_opportunity_ids(keywords: list[str] = [""], eligibilities: str = "",test
         opportunity_ids.extend([hit.get("id") for hit in data.get("oppHits", [])])
     return opportunity_ids
 
-def grants_main(conn: sqlite3.Connection, job_id: int) -> None:
-    print("Starting daily grant ingestion loop...")
+def grants_main(conn: sqlite3.Connection, job_id: int, daily: bool = True) -> None:
+    print("Starting grant ingestion loop...")
+    if daily: 
+        print("Starting daily grant ingestion loop...")
+        log(conn, job_id, "Starting daily grant ingestion loop...", "INFO")
+    else:
+        print("Starting weekly grant ingestion loop...")
+        log(conn, job_id, "Starting weekly grant ingestion loop...", "INFO")
     create_tables(conn)
     if os.getenv("TEST_5_IDS") == "False":
         test_mode = 0
@@ -61,11 +67,13 @@ def grants_main(conn: sqlite3.Connection, job_id: int) -> None:
     log(conn, job_id, f"Updated the last_seen_at column for {len(opportunity_ids)} opportunity ids.", "INFO")
     print(f"Updated the last_seen_at column for {len(opportunity_ids)} opportunity ids.")
 
-    #3: remove old and irrelevant opportunity ids from the list
-    opportunity_ids = trim_opportunity_ids(opportunity_ids)
-    log(conn, job_id, f"After trimming, {len(opportunity_ids)} opportunity ids remain.", "INFO")
-    print(f"After trimming, {len(opportunity_ids)} opportunity ids remain.")
-
+    if daily:
+        #3: for daily ingestion,remove old and irrelevant opportunity ids from the list
+        opportunity_ids = trim_opportunity_ids(opportunity_ids)
+        log(conn, job_id, f"After trimming, {len(opportunity_ids)} opportunity ids remain.", "INFO")
+        print(f"After trimming, {len(opportunity_ids)} opportunity ids remain.")
+    else: 
+        log(conn, job_id, "No trimming of opportunity ids needed for weekly ingestion.", "INFO")
     #4: investigate new and relevant grants
     if opportunity_ids:
         daily_ingestion(conn, opportunity_ids, job_id)

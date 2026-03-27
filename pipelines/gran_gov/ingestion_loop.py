@@ -191,13 +191,6 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                 # Insert new snapshot and compute hash for dedupe
                 new_hash = insert_snapshot(conn, str(oid), normalized)
 
-                # This code could be sued to update the grant tags 
-                #   Commenting it out for now because it is very slow and burns through tokens (or literally burns my laptop)
-                # ai_result = ai_grant_tagging(llm_client, normalized)
-                # if ai_result is not None:
-                #     update_grant_tags(conn, str(oid), ai_result, job_id)
-                #     log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
-
                 # If there is no previous snapshot, we can skip the diffing process. However, we will need to classify the grant as relevant or not.
                 if prev is None:
                     # Classify the grant as relevant or not
@@ -216,9 +209,18 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                         else:
                             update_tribal_eligibility(conn, str(oid), quick_check_result)
                             log(conn, job_id, f"Identified as new grant and classified as not relevant for opportunity id: {oid}", "INFO")
-                    
-                old_hash = prev["hash"]
-                if old_hash == new_hash:
+                    # Add tags to new grants (categorization)
+                    ai_result = ai_grant_tagging(llm_client, normalized)
+                    if ai_result is not None:
+                        update_grant_tags(conn, str(oid), ai_result, job_id)
+                        log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
+
+
+                if prev is not None:
+                    old_hash = prev["hash"]
+                else:
+                    old_hash = None
+                if old_hash == new_hash or old_hash is None:
                     i += 1
                     continue
 
@@ -252,6 +254,12 @@ def daily_ingestion(conn: sqlite3.Connection, opportunity_ids: list[str], job_id
                 if alerts:
                     log(conn, job_id, f"Inserted {len(alerts)} alerts for opportunity id: {oid}", "INFO")
                     grants_with_alerts += 1
+                    # Add tags to grants with alerts (categorization) because they could have changed                   
+                    ai_result = ai_grant_tagging(llm_client, normalized)
+                    if ai_result is not None:
+                        update_grant_tags(conn, str(oid), ai_result, job_id)
+                        log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
+
                 else:
                     log(conn, job_id, f"No alerts changes for opportunity id: {oid}", "INFO")
                 i += 1
