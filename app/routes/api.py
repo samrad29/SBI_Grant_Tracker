@@ -9,16 +9,26 @@ api_bp = Blueprint("api", __name__)
 
 def _rows_to_dicts(cursor):
     """
-    Convert DB tuples from `cursor.fetchall()` / `cursor.fetchone()` into JSON-friendly dicts.
+    Convert DB rows into JSON-friendly dicts.
+    psycopg dict_row already returns dict-like rows; do not zip(cols, row) on those
+    (iterating a dict yields keys, which would map every column to its own name).
     """
+    rows = cursor.fetchall()
+    if not rows:
+        return []
+    if isinstance(rows[0], dict):
+        return [dict(r) for r in rows]
     cols = [desc[0] for desc in (cursor.description or [])]
-    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    return [dict(zip(cols, row)) for row in rows]
+
 
 def _row_to_dict(cursor):
-    cols = [desc[0] for desc in (cursor.description or [])]
     row = cursor.fetchone()
     if row is None:
         return None
+    if isinstance(row, dict):
+        return dict(row)
+    cols = [desc[0] for desc in (cursor.description or [])]
     return dict(zip(cols, row))
 
 @api_bp.route("/api/opportunities")
