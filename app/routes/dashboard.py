@@ -2,7 +2,7 @@
 Routes for the mission control dashboard
 """
 from flask import Blueprint, render_template
-from db.db_util import get_db_connection, is_test_mode
+from db.db_util import get_db_connection, is_test_mode, scalar_from_row
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -54,10 +54,12 @@ def grant_tags_page():
         GROUP BY tag
         ORDER BY tag_count DESC
     """).fetchall()
-    total_grants = conn.execute("""
-        SELECT COUNT(DISTINCT opportunity_id)
+    total_grants = scalar_from_row(
+        conn.execute("""
+        SELECT COUNT(DISTINCT opportunity_id) AS total_grants
         FROM grant_tags
-    """).fetchone()[0]
+    """).fetchone()
+    )
     return render_template("grant_tags.html", grant_tags=grant_tags, total_grants=total_grants)
 
 @dashboard_bp.route("/dashboard/grant_tags/<tag>")

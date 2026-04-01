@@ -1,4 +1,4 @@
-from db.db_util import get_db_connection, is_test_mode
+from db.db_util import get_db_connection, is_test_mode, scalar_from_row, row_get
 
 def db_health_check():
     """
@@ -13,14 +13,16 @@ def db_health_check():
         WHERE table_schema = 'public'
         ORDER BY table_name
     """)
-    tables = [row[0] for row in cursor.fetchall()]
+    tables = [row_get(row, "table_name", 0) for row in cursor.fetchall()]
     print("Table names:")
     for table in tables:
         print(table)
     # For each table print the number of rows
     print("Number of rows:")
     for table in tables:
-        count = conn.execute(f"SELECT COUNT(*) FROM {table};").fetchone()[0]
+        count = scalar_from_row(
+            conn.execute(f"SELECT COUNT(*) AS cnt FROM {table};").fetchone()
+        )
         print(f"{table}: {count}")
     # For each table print the columns
     print("Columns:")

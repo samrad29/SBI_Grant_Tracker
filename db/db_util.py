@@ -8,6 +8,30 @@ except ImportError:  # pragma: no cover
     psycopg = None
     dict_row = None
 
+def scalar_from_row(row):
+    """
+    First column of a single-column SELECT. Works for sqlite3.Row/tuple and
+    psycopg dict_row (dict), where row[0] raises KeyError.
+    """
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+
+
+def row_get(row, key: str, index: int = 0):
+    """Named column access; falls back to index for plain tuples."""
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row[key]
+    try:
+        return row[key]
+    except (KeyError, TypeError, IndexError):
+        return row[index]
+
+
 def is_test_mode() -> bool:
     """
     Resolve TEST_MODE from environment.

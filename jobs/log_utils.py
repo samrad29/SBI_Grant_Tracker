@@ -3,6 +3,9 @@ This module contains the functions to log the pipeline runs
 """
 from datetime import datetime
 
+from db.db_util import row_get
+
+
 def create_pipeline_run(conn, pipeline_name, run_type):
     cursor = conn.cursor()
 
@@ -11,7 +14,7 @@ def create_pipeline_run(conn, pipeline_name, run_type):
         VALUES (%s, %s, %s, %s)
         RETURNING id
     """, (pipeline_name, run_type, "running", datetime.now()))
-    job_id = cursor.fetchone()[0]
+    job_id = row_get(cursor.fetchone(), "id", 0)
     conn.commit()
     cursor.close()
     log(conn, job_id, "Pipeline run started", "INFO")

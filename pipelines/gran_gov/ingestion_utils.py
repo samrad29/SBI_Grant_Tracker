@@ -2,7 +2,7 @@ import requests
 import json
 from jobs.log_utils import log
 from datetime import datetime
-from db.db_util import get_db_connection
+from db.db_util import get_db_connection, scalar_from_row
 OPPORTUNITY_URL = "https://api.grants.gov/v1/api/fetchOpportunity"
 
 
@@ -249,10 +249,10 @@ def archive_old_grants(conn, job_id: int) -> int:
     try: 
         conn.execute("BEGIN")
         query = """
-            SELECT COUNT(*) FROM grants
+            SELECT COUNT(*) AS cnt FROM grants
             WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '5 days'
         """
-        archived_grants = conn.execute(query).fetchone()[0]
+        archived_grants = scalar_from_row(conn.execute(query).fetchone())
         query = """
             UPDATE grants
             SET status = 'archived'
