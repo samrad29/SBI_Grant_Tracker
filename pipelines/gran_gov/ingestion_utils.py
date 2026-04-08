@@ -125,8 +125,8 @@ def trim_opportunity_ids(opportunity_ids: list[str]) -> list[str]:
         conn = get_db_connection(test_mode=False)
         query = """
         SELECT opportunity_id
-        FROM grant_classifications
-        WHERE IS_RELEVANT = FALSE
+        FROM tribal_eligibility
+        WHERE IS_TRIBAL_ELIGIBLE = FALSE
         """
         db_ids = {row[0] for row in conn.execute(query).fetchall()}
         return [oid for oid in opportunity_ids if oid not in db_ids]
