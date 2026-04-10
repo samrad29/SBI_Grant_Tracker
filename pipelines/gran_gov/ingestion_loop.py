@@ -8,6 +8,7 @@ from pipelines.gran_gov.change_detection import detect_changes
 from pipelines.gran_gov.ai_utils import ai_tribal_eligibility_check, get_llm_client, ai_grant_tagging, RateLimitError
 from pipelines.gran_gov.quick_classification import quick_classification
 from jobs.log_utils import log
+from db.db_util import row_get
 
 def canonical_json(obj: Any) -> str:
     # Sort keys + compact separators for stable hashing
@@ -79,17 +80,17 @@ def get_previous_snapshot(conn, opportunity_id: str):
     ).fetchone()
     if not row:
         return None
-    return {"data_json": row[0], "hash": row[1], "fetched_at": row[2]}
+    return {
+        "data_json": row_get(row, "data_json", 0),
+        "hash": row_get(row, "hash", 1),
+        "fetched_at": row_get(row, "fetched_at", 2),
+    }
 
 def insert_snapshot(conn, opportunity_id: str, normalized: dict[str, Any]):
     # Important: sort/unique list fields BEFORE hashing/compare to reduce false positives.
     # (Do this in your normalization function ideally.)
     can = canonical_json(normalized)
     h = sha256_text(can)
-    if opportunity_id is None:
-        print(f"Opportunity id is None for normalized: {normalized}")
-        return h
-
     conn.execute(
         """
         INSERT INTO grant_snapshots (opportunity_id, fetched_at, data_json, hash)

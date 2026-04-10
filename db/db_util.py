@@ -32,6 +32,47 @@ def row_get(row, key: str, index: int = 0):
         return row[index]
 
 
+def ensure_postgres_id_defaults(conn, fixes: tuple[tuple[str, str], ...]) -> None:
+    """
+    If tables were created without BIGSERIAL/identity on id, INSERT omits id and Postgres
+    stores NULL. CREATE TABLE IF NOT EXISTS does not fix existing tables. For each
+    (table_name, sequence_name), attach a sequence + DEFAULT when id has no default.
+    """
+    if isinstance(conn, sqlite3.Connection):
+        return
+    with conn.cursor() as cur:
+        for table, seq in fixes:
+            cur.execute(
+                """
+                SELECT column_default
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = %s
+                  AND column_name = 'id'
+                """,
+                (table,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                continue
+            default = row["column_default"] if isinstance(row, dict) else row[0]
+            if default:
+                continue
+            cur.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq}")
+            cur.execute(
+                f"ALTER TABLE {table} ALTER COLUMN id "
+                f"SET DEFAULT nextval('{seq}'::regclass)"
+            )
+            cur.execute(f"SELECT COALESCE(MAX(id), 0) AS m FROM {table}")
+            m_row = cur.fetchone()
+            m = m_row["m"] if isinstance(m_row, dict) else m_row[0]
+            if m < 1:
+                cur.execute("SELECT setval(%s, 1, false)", (seq,))
+            else:
+                cur.execute("SELECT setval(%s, %s, true)", (seq, m))
+            cur.execute(f"ALTER SEQUENCE {seq} OWNED BY {table}.id")
+
+
 def is_test_mode() -> bool:
     """
     Resolve TEST_MODE from environment.

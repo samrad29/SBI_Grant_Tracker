@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from db.db_util import ensure_postgres_id_defaults
+
 SCHEMA_SQL = r"""
 
 -- Current "latest known" view of each opportunity
@@ -149,6 +151,16 @@ def create_tables(conn) -> None:
             if not part:
                 continue
             conn.execute(part + ";")
+        ensure_postgres_id_defaults(
+            conn,
+            (
+                ("grant_snapshots", "grant_snapshots_id_seq"),
+                ("grant_alerts", "grant_alerts_id_seq"),
+                ("tribal_eligibility", "tribal_eligibility_id_seq"),
+                ("grant_tags", "grant_tags_id_seq"),
+                ("user_grant_activity", "user_grant_activity_id_seq"),
+            ),
+        )
     conn.commit()
 
 

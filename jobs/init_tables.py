@@ -3,50 +3,7 @@ This module contains the tables for the pipeline runs
 """
 import sqlite3
 
-
-def _ensure_postgres_id_defaults(conn):
-    """
-    If pipeline tables were created earlier without BIGSERIAL (e.g. manual DDL or
-    an old schema), id has no default and INSERT ... RETURNING id fails with NOT NULL.
-    Attach a sequence + DEFAULT when information_schema shows no default on id.
-    """
-    if isinstance(conn, sqlite3.Connection):
-        return
-    fixes = (
-        ("pipeline_runs", "pipeline_runs_id_seq"),
-        ("pipeline_logs", "pipeline_logs_id_seq"),
-    )
-    with conn.cursor() as cur:
-        for table, seq in fixes:
-            cur.execute(
-                """
-                SELECT column_default
-                FROM information_schema.columns
-                WHERE table_schema = current_schema()
-                  AND table_name = %s
-                  AND column_name = 'id'
-                """,
-                (table,),
-            )
-            row = cur.fetchone()
-            if row is None:
-                continue
-            default = row["column_default"] if isinstance(row, dict) else row[0]
-            if default:
-                continue
-            cur.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq}")
-            cur.execute(
-                f"ALTER TABLE {table} ALTER COLUMN id "
-                f"SET DEFAULT nextval('{seq}'::regclass)"
-            )
-            cur.execute(f"SELECT COALESCE(MAX(id), 0) AS m FROM {table}")
-            m_row = cur.fetchone()
-            m = m_row["m"] if isinstance(m_row, dict) else m_row[0]
-            if m < 1:
-                cur.execute("SELECT setval(%s, 1, false)", (seq,))
-            else:
-                cur.execute("SELECT setval(%s, %s, true)", (seq, m))
-            cur.execute(f"ALTER SEQUENCE {seq} OWNED BY {table}.id")
+from db.db_util import ensure_postgres_id_defaults
 
 
 def create_pipeline_tables(conn):
@@ -86,5 +43,11 @@ def create_pipeline_tables(conn):
         );
         """
     )
-    _ensure_postgres_id_defaults(conn)
+    ensure_postgres_id_defaults(
+        conn,
+        (
+            ("pipeline_runs", "pipeline_runs_id_seq"),
+            ("pipeline_logs", "pipeline_logs_id_seq"),
+        ),
+    )
     conn.commit()
