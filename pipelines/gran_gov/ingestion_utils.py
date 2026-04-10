@@ -2,7 +2,7 @@ import requests
 import json
 from jobs.log_utils import log
 from datetime import datetime
-from db.db_util import get_db_connection, scalar_from_row
+from db.db_util import scalar_from_row
 OPPORTUNITY_URL = "https://api.grants.gov/v1/api/fetchOpportunity"
 
 
@@ -117,22 +117,23 @@ def normalize_opportunity(data: dict) -> dict:
         "attachments": json.dumps(att_out, ensure_ascii=False),
     }
 
-def trim_opportunity_ids(opportunity_ids: list[str]) -> list[str]:
+def trim_opportunity_ids(opportunity_ids: list, conn) -> list:
     """
-    Remove irrelevant opportunity ids from the list
+    Remove opportunity ids marked not tribally eligible in tribal_eligibility.
+    Uses the same connection as the pipeline (Postgres rows are dicts — row[0] raises KeyError).
     """
     try:
-        conn = get_db_connection(test_mode=False)
         query = """
         SELECT opportunity_id
         FROM tribal_eligibility
         WHERE IS_TRIBAL_ELIGIBLE = FALSE
         """
-        db_ids = {row[0] for row in conn.execute(query).fetchall()}
-        return [oid for oid in opportunity_ids if oid not in db_ids]
+        rows = conn.execute(query).fetchall()
+        db_ids = {str(scalar_from_row(row)) for row in rows}
+        return [oid for oid in opportunity_ids if str(oid) not in db_ids]
     except Exception as e:
         print(f"Error trimming opportunity ids: {e}")
-        return None
+        return opportunity_ids
 
 def update_tribal_eligibility(conn, opportunity_id: str, tribal_eligibility: dict):
     """

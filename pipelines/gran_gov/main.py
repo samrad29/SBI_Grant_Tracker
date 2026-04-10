@@ -68,7 +68,7 @@ def grants_main(conn, job_id: int, daily: bool = True) -> None:
 
     if daily:
         #3: for daily ingestion,remove old and irrelevant opportunity ids from the list
-        opportunity_ids = trim_opportunity_ids(opportunity_ids)
+        opportunity_ids = trim_opportunity_ids(opportunity_ids, conn)
         log(conn, job_id, f"After trimming, {len(opportunity_ids)} opportunity ids remain.", "INFO")
         print(f"After trimming, {len(opportunity_ids)} opportunity ids remain.")
     else: 
