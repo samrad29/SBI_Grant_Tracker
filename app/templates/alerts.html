@@ -1,27 +1,143 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Alerts</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mission Control — Alerts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+            line-height: 1.45;
+        }
+
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+
+        .subhead {
+            color: #94a3b8;
+            margin: 0 0 20px 0;
+            font-size: 0.95rem;
+        }
+
+        .nav-row {
+            margin-bottom: 24px;
+        }
+
+        .nav-row a {
+            color: #38bdf8;
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+
+        .nav-row a:hover {
+            text-decoration: underline;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+
+        table {
+            width: 100%;
+            min-width: 720px;
+            border-collapse: collapse;
+            background: #1e293b;
+        }
+
+        th, td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #334155;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #020617;
+            font-weight: 600;
+            color: #cbd5e1;
+            white-space: nowrap;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #334155;
+        }
+
+        .mono {
+            font-family: ui-monospace, Consolas, monospace;
+            font-size: 0.85rem;
+            word-break: break-word;
+            max-width: 280px;
+        }
+
+        .alert-type {
+            color: #fbbf24;
+            font-weight: 600;
+        }
+
+        .empty, .error {
+            text-align: center;
+            color: #94a3b8;
+            padding: 28px 16px !important;
+        }
+
+        .error {
+            color: #f87171;
+        }
+
+        a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
 
-<h1>🚨 Alerts</h1>
+<h1>Alerts</h1>
+<p class="subhead">Recent grant change detections (latest 50).</p>
 
+<p class="nav-row"><a href="/dashboard">← Mission Control</a></p>
+
+<div class="table-wrap">
 <table id="alerts-table">
     <thead>
         <tr>
-            <th>Detected At</th>
-            <th>Alert Type</th>
+            <th>Opportunity</th>
+            <th>Detected</th>
+            <th>Type</th>
             <th>Field</th>
-            <th>Old Value</th>
-            <th>New Value</th>
+            <th>Old value</th>
+            <th>New value</th>
         </tr>
     </thead>
     <tbody>
     </tbody>
 </table>
+</div>
 
 <script>
+function escapeHtml(s) {
+    if (s == null || s === "") return "";
+    const div = document.createElement("div");
+    div.textContent = String(s);
+    return div.innerHTML;
+}
+
 async function loadAlerts() {
     const tbody = document.querySelector("#alerts-table tbody");
     tbody.innerHTML = "";
@@ -33,22 +149,34 @@ async function loadAlerts() {
         }
         const data = await res.json();
 
+        if (!data.length) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td colspan="6" class="empty">No alerts yet.</td>`;
+            tbody.appendChild(tr);
+            return;
+        }
+
         data.forEach(alert => {
             const tr = document.createElement("tr");
+            const oid = alert.opportunity_id ?? "";
+            const grantLink = oid
+                ? `<a href="/grants/${encodeURIComponent(oid)}">${escapeHtml(oid)}</a>`
+                : escapeHtml(oid);
 
             tr.innerHTML = `
-                <td>${alert.detected_at ?? ""}</td>
-                <td>${alert.alert_type ?? ""}</td>
-                <td>${alert.field ?? ""}</td>
-                <td>${alert.old_value ?? ""}</td>
-                <td>${alert.new_value ?? ""}</td>
+                <td>${grantLink}</td>
+                <td>${escapeHtml(alert.detected_at ?? "")}</td>
+                <td class="alert-type">${escapeHtml(alert.alert_type ?? "")}</td>
+                <td>${escapeHtml(alert.field ?? "")}</td>
+                <td class="mono">${escapeHtml(alert.old_value ?? "")}</td>
+                <td class="mono">${escapeHtml(alert.new_value ?? "")}</td>
             `;
 
             tbody.appendChild(tr);
         });
     } catch (err) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="5">Failed to load alerts.</td>`;
+        tr.innerHTML = `<td colspan="6" class="error">Failed to load alerts.</td>`;
         tbody.appendChild(tr);
         console.error(err);
     }
