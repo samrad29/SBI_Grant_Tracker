@@ -1,32 +1,194 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Grants</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+            line-height: 1.45;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+
+        .subhead {
+            color: #94a3b8;
+            margin: 0 0 20px 0;
+            font-size: 0.95rem;
+        }
+
+        .nav-row {
+            margin-bottom: 24px;
+        }
+
+        .nav-row a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+
+        .nav-row a:hover {
+            text-decoration: underline;
+        }
+
+        #grants-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #grants-list li {
+            margin: 0;
+        }
+
+        .grant-card {
+            display: block;
+            padding: 16px 18px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            text-decoration: none;
+            color: inherit;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .grant-card:hover {
+            background: #334155;
+            border-color: #475569;
+        }
+
+        .grant-card-title {
+            font-weight: 600;
+            color: #f1f5f9;
+            margin-bottom: 6px;
+            font-size: 1.05rem;
+        }
+
+        .grant-card-meta {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            align-items: center;
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: capitalize;
+            background: #334155;
+            color: #cbd5e1;
+        }
+
+        .status-pill.posted,
+        .status-pill.forecasted {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .status-pill.archived,
+        .status-pill.closed {
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+        }
+
+        .status-pill.unknown {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+
+        .empty, .error {
+            padding: 28px 20px;
+            text-align: center;
+            color: #94a3b8;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+        }
+
+        .error {
+            color: #f87171;
+        }
+    </style>
 </head>
 <body>
 
 <h1>Grants</h1>
+<p class="subhead">Browse opportunities from the database.</p>
+
+<p class="nav-row">
+    <a href="/dashboard">← Mission Control</a>
+</p>
 
 <ul id="grants-list"></ul>
 
 <script>
+function escapeHtml(s) {
+    if (s == null || s === "") return "";
+    const div = document.createElement("div");
+    div.textContent = String(s);
+    return div.innerHTML;
+}
+
+function statusClass(status) {
+    if (!status) return "unknown";
+    const s = String(status).trim().toLowerCase().replace(/\s+/g, "-");
+    if (["posted", "forecasted", "archived", "closed"].includes(s)) return s;
+    return "unknown";
+}
+
 async function loadGrants() {
-    const res = await fetch("/api/opportunities");
-    const data = await res.json();
-
     const list = document.getElementById("grants-list");
+    list.innerHTML = "";
 
-    data.forEach(grant => {
-        const li = document.createElement("li");
+    try {
+        const res = await fetch("/api/opportunities");
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        const data = await res.json();
 
-        li.innerHTML = `
-            <a href="/grants/${grant.opportunity_id}">
-                ${grant.title} (${grant.status})
-            </a>
-        `;
+        if (!data.length) {
+            list.innerHTML = `<li class="empty">No grants found.</li>`;
+            return;
+        }
 
-        list.appendChild(li);
-    });
+        data.forEach(grant => {
+            const oid = grant.opportunity_id != null ? String(grant.opportunity_id) : "";
+            const title = grant.title != null ? String(grant.title) : "(no title)";
+            const status = grant.status != null ? String(grant.status) : "";
+            const stClass = statusClass(status);
+
+            const li = document.createElement("li");
+            li.innerHTML = `
+                <a class="grant-card" href="/grants/${encodeURIComponent(oid)}">
+                    <div class="grant-card-title">${escapeHtml(title)}</div>
+                    <div class="grant-card-meta">
+                        <span class="status-pill ${stClass}">${escapeHtml(status) || "—"}</span>
+                        <span>ID ${escapeHtml(oid)}</span>
+                    </div>
+                </a>
+            `;
+            list.appendChild(li);
+        });
+    } catch (err) {
+        list.innerHTML = `<li class="error">Failed to load grants.</li>`;
+        console.error(err);
+    }
 }
 
 loadGrants();

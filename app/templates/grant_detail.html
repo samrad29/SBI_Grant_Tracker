@@ -1,63 +1,243 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Grant Detail</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+            line-height: 1.5;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .back {
+            margin-bottom: 20px;
+        }
+
+        .back a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+
+        .back a:hover {
+            text-decoration: underline;
+        }
+
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #f8fafc;
+            line-height: 1.3;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px 24px;
+            margin-bottom: 24px;
+        }
+
+        .meta-item {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+
+        .meta-label {
+            margin: 0 0 4px 0;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+        }
+
+        .meta-value {
+            margin: 0;
+            color: #e2e8f0;
+            font-size: 0.95rem;
+            word-break: break-word;
+        }
+
+        .meta-value.mono {
+            font-family: ui-monospace, Consolas, monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: capitalize;
+            background: #334155;
+            color: #cbd5e1;
+        }
+
+        .status-pill.posted,
+        .status-pill.forecasted {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .status-pill.archived,
+        .status-pill.closed {
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+        }
+
+        .status-pill.unknown {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+
+        .section {
+            margin-top: 8px;
+        }
+
+        .section h2 {
+            margin: 0 0 10px 0;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+        }
+
+        .prose {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px 18px;
+            color: #cbd5e1;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 0.95rem;
+        }
+
+        .error-box {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.35);
+            color: #fca5a5;
+            padding: 16px 18px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .error-box.visible {
+            display: block;
+        }
+    </style>
 </head>
 <body>
 
-<a href="/grants">← Back</a>
+<p class="back"><a href="/grants">← All grants</a></p>
 
-<h1 id="title"></h1>
+<div id="error" class="error-box" role="alert"></div>
 
-<p><strong>Opportunity ID:</strong> <span id="opportunity_id"></span></p>
-<p><strong>Status:</strong> <span id="status"></span></p>
-<p><strong>Agency:</strong> <span id="agency"></span></p>
-<p><strong>Posted Date:</strong> <span id="posted_date"></span></p>
-<p><strong>Close Date:</strong> <span id="close_date"></span></p>
-<p><strong>Deadline Date:</strong> <span id="deadline_date"></span></p>
-<p><strong>Deadline Description:</strong> <span id="deadline_description"></span></p>
-<p><strong>Last Updated Date:</strong> <span id="last_updated_date"></span></p>
-<p><strong>Award Floor:</strong> <span id="award_floor"></span></p>
-<p><strong>Award Ceiling:</strong> <span id="award_ceiling"></span></p>
-<p><strong>Estimated Funding:</strong> <span id="estimated_funding"></span></p>
-<p><strong>Cost Sharing:</strong> <span id="cost_sharing"></span></p>
-<p><strong>Category:</strong> <span id="category"></span></p>
-<p><strong>Eligibility Description:</strong> <span id="eligibility_description"></span></p>
-<p><strong>ALNs:</strong> <span id="alns"></span></p>
-<p><strong>Eligibilities:</strong> <span id="eligibilities"></span></p>
-<p><strong>Funding Categories:</strong> <span id="funding_categories"></span></p>
-<p><strong>Attachments:</strong> <span id="attachments"></span></p>
+<h1 id="title">Loading…</h1>
 
-<p><strong>Description:</strong></p>
-<p id="description"></p>
+<div class="meta-grid" id="meta-top"></div>
+
+<div class="section">
+    <h2>Description</h2>
+    <div class="prose" id="description"></div>
+</div>
 
 <script>
 const opportunityId = "{{ opportunity_id }}";
 
-async function loadGrant() {
-    const res = await fetch(`/api/opportunities/${opportunityId}`);
-    const data = await res.json();
+function statusClass(status) {
+    if (!status) return "unknown";
+    const s = String(status).trim().toLowerCase().replace(/\s+/g, "-");
+    if (["posted", "forecasted", "archived", "closed"].includes(s)) return s;
+    return "unknown";
+}
 
-    document.getElementById("opportunity_id").innerText = data.opportunity_id;
-    document.getElementById("title").innerText = data.title;
-    document.getElementById("status").innerText = data.status;
-    document.getElementById("agency").innerText = data.agency;
-    document.getElementById("posted_date").innerText = data.posted_date;
-    document.getElementById("close_date").innerText = data.close_date;
-    document.getElementById("deadline_date").innerText = data.deadline_date;
-    document.getElementById("deadline_description").innerText = data.deadline_description;
-    document.getElementById("last_updated_date").innerText = data.last_updated_date;
-    document.getElementById("award_floor").innerText = data.award_floor;
-    document.getElementById("award_ceiling").innerText = data.award_ceiling;
-    document.getElementById("estimated_funding").innerText = data.estimated_funding;
-    document.getElementById("cost_sharing").innerText = data.cost_sharing;
-    document.getElementById("category").innerText = data.category;
-    document.getElementById("eligibility_description").innerText = data.eligibility_description;
-    document.getElementById("alns").innerText = data.alns;
-    document.getElementById("eligibilities").innerText = data.eligibilities;
-    document.getElementById("funding_categories").innerText = data.funding_categories;
-    document.getElementById("attachments").innerText = data.attachments;
-    document.getElementById("description").innerText = data.description || "N/A";
+function esc(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+}
+
+function field(label, value, opts = {}) {
+    const v = value == null || value === "" ? "—" : String(value);
+    const monoClass = opts.mono ? " mono" : "";
+    return `<div class="meta-item"><div class="meta-label">${esc(label)}</div><div class="meta-value${monoClass}">${esc(v)}</div></div>`;
+}
+
+function fieldHtml(label, innerHtml) {
+    return `<div class="meta-item"><div class="meta-label">${esc(label)}</div><div class="meta-value">${innerHtml}</div></div>`;
+}
+
+async function loadGrant() {
+    const errEl = document.getElementById("error");
+    errEl.classList.remove("visible");
+    errEl.textContent = "";
+
+    try {
+        const res = await fetch(`/api/opportunities/${encodeURIComponent(opportunityId)}`);
+        if (res.status === 404) {
+            document.getElementById("title").textContent = "Grant not found";
+            errEl.textContent = "No grant exists for this opportunity ID.";
+            errEl.classList.add("visible");
+            document.getElementById("meta-top").innerHTML = "";
+            document.getElementById("description").textContent = "";
+            return;
+        }
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        const data = await res.json();
+
+        const pageTitle = data.title || "(no title)";
+        document.getElementById("title").textContent = pageTitle;
+        document.title = pageTitle.length > 48 ? pageTitle.slice(0, 45) + "…" : pageTitle;
+
+        const st = data.status != null ? String(data.status) : "";
+        const stClass = statusClass(st);
+        const statusHtml = st
+            ? `<span class="status-pill ${stClass}">${esc(st)}</span>`
+            : "—";
+
+        document.getElementById("meta-top").innerHTML = [
+            fieldHtml("Status", statusHtml),
+            field("Opportunity ID", data.opportunity_id),
+            field("Agency", data.agency),
+            field("Posted date", data.posted_date),
+            field("Close date", data.close_date),
+            field("Deadline date", data.deadline_date),
+            field("Deadline description", data.deadline_description),
+            field("Last updated", data.last_updated_date),
+            field("Award floor", data.award_floor),
+            field("Award ceiling", data.award_ceiling),
+            field("Estimated funding", data.estimated_funding),
+            field("Cost sharing", data.cost_sharing),
+            field("Category", data.category),
+            field("Eligibility description", data.eligibility_description, { mono: true }),
+            field("ALNs", data.alns, { mono: true }),
+            field("Eligibilities", data.eligibilities, { mono: true }),
+            field("Funding categories", data.funding_categories, { mono: true }),
+            field("Attachments", data.attachments, { mono: true }),
+        ].join("");
+
+        document.getElementById("description").textContent =
+            data.description != null && data.description !== "" ? data.description : "N/A";
+    } catch (e) {
+        document.getElementById("title").textContent = "Could not load grant";
+        errEl.textContent = "Something went wrong while loading this grant.";
+        errEl.classList.add("visible");
+        console.error(e);
+    }
 }
 
 loadGrant();
