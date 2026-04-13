@@ -255,7 +255,9 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                             prev["fetched_at"],
                         ),
                     )
-                if alerts:
+                if len(alerts) == 0:
+                    log(conn, job_id, f"No alerts changes for opportunity id: {oid}", "INFO")
+                else:
                     log(conn, job_id, f"Inserted {len(alerts)} alerts for opportunity id: {oid}", "INFO")
                     grants_with_alerts += 1
                     # Add tags to grants with alerts (categorization) because they could have changed                   
@@ -263,8 +265,6 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                     if ai_result is not None:
                         update_grant_tags(conn, str(oid), ai_result, job_id)
                         log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
-                else:
-                    log(conn, job_id, f"No alerts changes for opportunity id: {oid}", "INFO")
                 i += 1
             except RateLimitError as e:
                 pause_s = float(getattr(e, "retry_seconds", 10.0) or 10.0)
