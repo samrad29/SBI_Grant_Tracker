@@ -20,6 +20,10 @@ def create_pipeline_run(conn, pipeline_name, run_type):
     log(conn, job_id, "Pipeline run started", "INFO")
     return job_id
 
+def mark_runs_completed(conn):
+    conn.execute("UPDATE pipeline_runs SET status = 'completed' WHERE status = 'running' AND finished_at IS NULL")
+    conn.commit()
+    return
 
 def update_pipeline_run(conn, job_id: int, **kwargs):
     cursor = conn.cursor()

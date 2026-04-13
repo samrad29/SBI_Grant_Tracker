@@ -1,7 +1,7 @@
 from pipelines.gran_gov.main import grants_main
 from db.db_util import get_db_connection
 from jobs.init_tables import create_pipeline_tables
-from jobs.log_utils import create_pipeline_run
+from jobs.log_utils import create_pipeline_run, mark_runs_completed
 from jobs.log_utils import update_pipeline_run
 from jobs.log_utils import log
 from datetime import datetime
@@ -31,6 +31,7 @@ def run_daily_jobs() -> None:
     log(conn, job_id, f"Grants daily job took {grants_daily_end_time - grants_daily_start_time}", "INFO")
     print("Updating pipeline run for grants daily job...")
     update_pipeline_run(conn, job_id, status="completed", finished_at=datetime.now())
+    mark_runs_completed(conn)
     print(f"Grants daily job pipeline run completed with ID: {job_id}")
     print(f"Daily jobs took {datetime.now() - daily_start_time}")
     print("--------------------------------")
