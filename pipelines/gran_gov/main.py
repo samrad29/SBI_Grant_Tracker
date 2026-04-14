@@ -42,9 +42,9 @@ def get_opportunity_ids(keywords: list[str] = [""], eligibilities: str = "",test
         opportunity_ids.extend([hit.get("id") for hit in data.get("oppHits", [])])
     return opportunity_ids
 
-def grants_main(conn, job_id: int, daily: bool = True) -> None:
+def grants_main(conn, job_id: int, daily: bool = True) -> dict:
     print("Starting grant ingestion loop...")
-    if daily: 
+    if daily:
         print("Starting daily grant ingestion loop...")
         log(conn, job_id, "Starting daily grant ingestion loop...", "INFO")
     else:
@@ -55,6 +55,8 @@ def grants_main(conn, job_id: int, daily: bool = True) -> None:
         test_mode = 0
     else:
         test_mode = 1
+
+    stats = {"records_processed": 0, "new_records": 0, "updated_records": 0}
 
     #1: get all active/forecasted opportunity ids from the API
     opportunity_ids = get_opportunity_ids(test_mode=test_mode)
@@ -71,11 +73,13 @@ def grants_main(conn, job_id: int, daily: bool = True) -> None:
         opportunity_ids = trim_opportunity_ids(opportunity_ids, conn)
         log(conn, job_id, f"After trimming, {len(opportunity_ids)} opportunity ids remain.", "INFO")
         print(f"After trimming, {len(opportunity_ids)} opportunity ids remain.")
-    else: 
+    else:
         log(conn, job_id, "No trimming of opportunity ids needed for weekly ingestion.", "INFO")
     #4: investigate new and relevant grants
     if opportunity_ids:
-        daily_ingestion(conn, opportunity_ids, job_id)
+        ingestion_stats = daily_ingestion(conn, opportunity_ids, job_id)
+        if ingestion_stats:
+            stats.update(ingestion_stats)
         log(conn, job_id, "Grant ingestion loop completed successfully.", "INFO")
         print("Grant ingestion loop completed successfully.")
     else:
@@ -86,4 +90,4 @@ def grants_main(conn, job_id: int, daily: bool = True) -> None:
     archived_grants = archive_old_grants(conn, job_id)
     log(conn, job_id, f"Archived {archived_grants} grants that have not been seen in the past 5 days.", "INFO")
     print(f"Archived {archived_grants} grants that have not been seen in the past 5 days.")
-    return
+    return stats

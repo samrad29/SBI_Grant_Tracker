@@ -169,24 +169,31 @@ def upsert_grant_current(conn, normalized: dict[str, Any]):
 
 def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
     """
-    takes in a list of opportunity ids and checks for any updates
+    takes in a list of opportunity ids and checks for any updates.
+
+    Returns a stats dict with:
+      - records_processed: grants successfully fetched + upserted this run
+      - new_records: grants that had no previous snapshot (first time seen)
+      - updated_records: grants where the snapshot hash changed vs. the prior snapshot
     """
     try:
         llm_client = get_llm_client()
         ingestion_count = 0
         new_grants = 0
+        updated_grants = 0
         new_relevant_grants = 0
         grants_with_alerts = 0
         i = 0
         while i < len(opportunity_ids):
             oid = opportunity_ids[i]
-            try: 
+            try:
                 raw = fetch_opportunity(oid)                 # call fetchOpportunity
                 normalized = normalize_opportunity(raw)    # map to your dict shape
                 normalized["id"] = str(oid)          # ensure matches schema
 
                 # Upsert current grant record
                 upsert_grant_current(conn, normalized)
+                ingestion_count += 1
                 log(conn, job_id, f"Upserted grant current for opportunity id: {oid}", "INFO")
 
                 # Load previous snapshot (if any)
@@ -226,6 +233,10 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                 if old_hash == new_hash or old_hash is None:
                     i += 1
                     continue
+
+                # If we reach this point, this grant had a previous snapshot
+                # AND its content hash changed — i.e. it's an updated record.
+                updated_grants += 1
 
                 old_data = json.loads(prev["data_json"])
                 new_data = normalized
@@ -275,8 +286,13 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                 log(conn, job_id, f"Error in daily ingestion for opportunity id: {oid}: {e}", "ERROR")
                 i += 1
                 continue
-        log(conn, job_id, f"Ingestion completed with {ingestion_count} grants, {new_grants} new grants, {new_relevant_grants} new relevant grants, and {grants_with_alerts} grants with alerts.", "INFO")
+        log(conn, job_id, f"Ingestion completed with {ingestion_count} grants, {new_grants} new grants, {updated_grants} updated grants, {new_relevant_grants} new relevant grants, and {grants_with_alerts} grants with alerts.", "INFO")
         conn.commit()
+        return {
+            "records_processed": ingestion_count,
+            "new_records": new_grants,
+            "updated_records": updated_grants,
+        }
     except Exception as e:
         log(conn, job_id, f"Error in daily ingestion: {e}", "ERROR")
         conn.rollback()
