@@ -64,6 +64,7 @@ def get_opportunities():
                 WHERE tag = ANY(%s)
             ) AS grant_tags
                 ON grants.opportunity_id = grant_tags.opportunity_id
+            WHERE grant_tags.total_score > 0
             ORDER BY grant_tags.total_score DESC
             """,
             (tag_list,),
