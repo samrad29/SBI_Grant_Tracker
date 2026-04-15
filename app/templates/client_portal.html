@@ -498,14 +498,21 @@ let bookmarkedOppIds = new Set();
 let activeOppId = null;
 let allAlerts = [];
 
+function normalizeArrayResponse(payload) {
+    return Array.isArray(payload) ? payload : [];
+}
+
 async function fetchBookmarkedIds() {
     const uid = getUserId();
     const res = await fetch("/api/user_activity/get_bookmarked_grants?user_id=" + encodeURIComponent(uid));
     if (!res.ok) throw new Error("bookmarks");
-    const rows = await res.json();
+    const rows = normalizeArrayResponse(await res.json());
     bookmarkedOppIds = new Set(
         rows.map((r) => (r.opportunity_id != null ? String(r.opportunity_id) : "")).filter(Boolean)
     );
+    if (activeOppId && !bookmarkedOppIds.has(activeOppId)) {
+        activeOppId = null;
+    }
 }
 
 async function fetchGrantTitle(oid) {
@@ -526,14 +533,24 @@ async function renderBookmarks() {
         empty.hidden = true;
         return;
     }
-    const rows = await res.json();
+    const rows = normalizeArrayResponse(await res.json());
     if (!rows.length) {
+        activeOppId = null;
         empty.hidden = false;
         return;
     }
     empty.hidden = true;
+    const validRows = rows.filter((r) => r && r.opportunity_id != null);
+    if (!validRows.length) {
+        activeOppId = null;
+        empty.hidden = false;
+        return;
+    }
+    if (activeOppId && !validRows.some((r) => String(r.opportunity_id) === activeOppId)) {
+        activeOppId = null;
+    }
     const titles = await Promise.all(
-        rows.map((r) => fetchGrantTitle(String(r.opportunity_id)).then((t) => ({ r, title: t })))
+        validRows.map((r) => fetchGrantTitle(String(r.opportunity_id)).then((t) => ({ r, title: t })))
     );
     titles.forEach(({ r, title }) => {
         const oid = String(r.opportunity_id);
@@ -600,7 +617,7 @@ async function loadAlerts() {
     if (!res.ok) {
         allAlerts = [];
     } else {
-        allAlerts = await res.json();
+        allAlerts = normalizeArrayResponse(await res.json());
     }
     renderAlerts();
 }
@@ -632,7 +649,7 @@ async function renderChecklistPanel() {
         itemsEl.innerHTML = "<p class='error'>Failed to load checklist.</p>";
         return;
     }
-    const items = await res.json();
+    const items = normalizeArrayResponse(await res.json());
     itemsEl.innerHTML = "";
     if (!items.length) {
         itemsEl.innerHTML = "<p class='empty'>No items yet. Add one above.</p>";
