@@ -124,11 +124,25 @@ CREATE TABLE IF NOT EXISTS user_grant_activity (
   id BIGSERIAL PRIMARY KEY,
   user_id TEXT NOT NULL,
   opportunity_id TEXT NOT NULL,
+  is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE,
   status TEXT NOT NULL,  -- viewed, saved, applied
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (opportunity_id) REFERENCES grants(opportunity_id)
     ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS grant_checklist_items (
+  item_id BIGSERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  opportunity_id TEXT NOT NULL,
+  item_name TEXT NOT NULL,
+  is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (opportunity_id) REFERENCES grants(opportunity_id)
+    ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_grant_checklist_items_opportunity_id
+ON grant_checklist_items(user_id, opportunity_id, item_name);
 """
 
 

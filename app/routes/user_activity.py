@@ -8,17 +8,6 @@ from app.routes.api import _rows_to_dicts
 
 user_activity_bp = Blueprint("user_activity", __name__)
 
-@user_activity_bp.route("/api/user_activity/add_is_bookmarked_column")
-def add_is_bookmarked_column():
-    """
-    Add the is_bookmarked column to the user_grant_activity table
-    """
-    conn = get_db_connection(test_mode=is_test_mode())
-    cursor = conn.cursor()
-    cursor.execute("ALTER TABLE user_grant_activity ADD COLUMN IF NOT EXISTS is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE")
-    conn.commit()
-    return jsonify({"message": "Is bookmarked column added successfully"})
-
 @user_activity_bp.route("/api/user_activity/update_user_grant_status")
 def mark_grant():
     """
@@ -100,3 +89,57 @@ def get_user_alerts():
     """, (user_id,))
     alerts = _rows_to_dicts(cursor)
     return jsonify(alerts)
+
+@user_activity_bp.route("/api/user_activity/get_checklist_items")
+def get_checklist_items():
+    """
+    Get all checklist items for the current user
+    """
+    conn = get_db_connection(test_mode=is_test_mode())
+    user_id = request.args.get("user_id")
+    opportunity_id = request.args.get("opportunity_id")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM grant_checklist_items WHERE user_id = %s AND opportunity_id = %s", (user_id, opportunity_id))
+    checklist_items = _rows_to_dicts(cursor)
+    return jsonify(checklist_items)
+
+@user_activity_bp.route("/api/user_activity/update_checklist_item")
+def update_checklist_item():
+    """
+    Update a checklist item for the current user
+    """
+    conn = get_db_connection(test_mode=is_test_mode())
+    user_id = request.args.get("user_id")
+    opportunity_id = request.args.get("opportunity_id")
+    item_id = request.args.get("item_id")
+    is_completed = request.args.get("is_completed")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE grant_checklist_items SET is_completed = %s WHERE user_id = %s AND opportunity_id = %s AND item_id = %s", (is_completed, user_id, opportunity_id, item_id))
+    conn.commit()
+    return jsonify({"message": "Checklist item updated successfully"})
+
+@user_activity_bp.route("/api/user_activity/add_checklist_item")
+def add_checklist_item():
+    """
+    Add a checklist item for the current user
+    """
+    conn = get_db_connection(test_mode=is_test_mode())
+    user_id = request.args.get("user_id")
+    opportunity_id = request.args.get("opportunity_id")
+    item_name = request.args.get("item_name")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO grant_checklist_items (user_id, opportunity_id, item_name) VALUES (%s, %s, %s)", (user_id, opportunity_id, item_name))
+    conn.commit()
+    return jsonify({"message": "Checklist item added successfully"})
+
+
+# @user_activity_bp.route("/api/user_activity/add_is_bookmarked_column")
+# def add_is_bookmarked_column():
+#     """
+#     Add the is_bookmarked column to the user_grant_activity table
+#     """
+#     conn = get_db_connection(test_mode=is_test_mode())
+#     cursor = conn.cursor()
+#     cursor.execute("ALTER TABLE user_grant_activity ADD COLUMN IF NOT EXISTS is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE")
+#     conn.commit()
+#     return jsonify({"message": "Is bookmarked column added successfully"})
