@@ -394,7 +394,7 @@
         <label for="demo-user-id">Demo user id</label><br>
         <input type="text" id="demo-user-id" readonly aria-readonly="true">
     </div>
-    <button type="button" id="btn-reset-user">New demo id</button>
+    <button type="button" id="btn-reset-user" disabled title="Demo user is fixed for now">Demo user fixed</button>
 </div>
 
 <div class="portal-grid">
@@ -460,7 +460,7 @@
 </div>
 
 <script>
-const LS_KEY = "portal_demo_user_id";
+const DEMO_USER_ID = "demo-user";
 
 function escapeHtml(s) {
     if (s == null || s === "") return "";
@@ -470,25 +470,14 @@ function escapeHtml(s) {
 }
 
 function getUserId() {
-    let id = localStorage.getItem(LS_KEY);
-    if (!id) {
-        id = crypto.randomUUID();
-        localStorage.setItem(LS_KEY, id);
-    }
-    return id;
+    return DEMO_USER_ID;
 }
 
 function refreshUserIdField() {
     document.getElementById("demo-user-id").value = getUserId();
 }
 
-document.getElementById("btn-reset-user").addEventListener("click", () => {
-    localStorage.setItem(LS_KEY, crypto.randomUUID());
-    refreshUserIdField();
-    bookmarkedOppIds.clear();
-    activeOppId = null;
-    loadAll();
-});
+document.getElementById("btn-reset-user").addEventListener("click", () => {});
 
 function searchTextToTagsParam(text) {
     return text.trim().split(/\s+/).filter(Boolean).join(",");
