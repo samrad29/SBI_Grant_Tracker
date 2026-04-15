@@ -108,60 +108,65 @@ def get_opportunities():
     ``total_score`` (sum of matching tag scores for that opportunity) and
     ``tag_scores``: all matching tags with their scores for that grant.
     """
-    conn = get_db_connection(test_mode=is_test_mode())
-    tags_raw = request.args.get("tags", "")
-    tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
-    q_raw = (request.args.get("q") or "").strip()
-    if tag_list:
-        tag_list_lower = [t.lower() for t in tag_list]
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                grants.opportunity_id,
-                grants.title,
-                grants.agency,
-                grants.status,
-                grant_tags.tag,
-                grant_tags.tag_score,
-                grant_tags.total_score
-            FROM grants
-            INNER JOIN (
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        tags_raw = request.args.get("tags", "")
+        tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+        q_raw = (request.args.get("q") or "").strip()
+        if tag_list:
+            tag_list_lower = [t.lower() for t in tag_list]
+            cursor = conn.cursor()
+            cursor.execute(
+                """
                 SELECT
-                    opportunity_id,
-                    tag,
-                    tag_score,
-                    sum(tag_score) OVER (PARTITION BY opportunity_id) AS total_score
-                FROM grant_tags
-                WHERE LOWER(tag) = ANY(%s)
-            ) AS grant_tags
-                ON grants.opportunity_id = grant_tags.opportunity_id
-            WHERE grant_tags.total_score > 0
-            ORDER BY grant_tags.total_score DESC
-            """,
-            (tag_list_lower,),
-        )
-        raw = _rows_to_dicts(cursor)
-        opportunities = _aggregate_tagged_opportunities(raw)
-    elif q_raw:
-        cursor = conn.cursor()
-        pattern = f"%{q_raw}%"
-        cursor.execute(
-            """
-            SELECT opportunity_id, title, agency, status
-            FROM grants
-            WHERE title ILIKE %s OR agency ILIKE %s
-            ORDER BY posted_date DESC NULLS LAST, title
-            LIMIT 50
-            """,
-            (pattern, pattern),
-        )
-        opportunities = _rows_to_dicts(cursor)
-    else:
-        cursor = conn.cursor()
-        cursor.execute("SELECT opportunity_id, title, agency, status FROM grants limit 50")
-        opportunities = _rows_to_dicts(cursor)
-    return jsonify(opportunities)
+                    grants.opportunity_id,
+                    grants.title,
+                    grants.agency,
+                    grants.status,
+                    grant_tags.tag,
+                    grant_tags.tag_score,
+                    grant_tags.total_score
+                FROM grants
+                INNER JOIN (
+                    SELECT
+                        opportunity_id,
+                        tag,
+                        tag_score,
+                        sum(tag_score) OVER (PARTITION BY opportunity_id) AS total_score
+                    FROM grant_tags
+                    WHERE LOWER(tag) = ANY(%s)
+                ) AS grant_tags
+                    ON grants.opportunity_id = grant_tags.opportunity_id
+                WHERE grant_tags.total_score > 0
+                ORDER BY grant_tags.total_score DESC
+                """,
+                (tag_list_lower,),
+            )
+            raw = _rows_to_dicts(cursor)
+            opportunities = _aggregate_tagged_opportunities(raw)
+        elif q_raw:
+            cursor = conn.cursor()
+            pattern = f"%{q_raw}%"
+            cursor.execute(
+                """
+                SELECT opportunity_id, title, agency, status
+                FROM grants
+                WHERE title ILIKE %s OR agency ILIKE %s
+                ORDER BY posted_date DESC NULLS LAST, title
+                LIMIT 50
+                """,
+                (pattern, pattern),
+            )
+            opportunities = _rows_to_dicts(cursor)
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT opportunity_id, title, agency, status FROM grants limit 50")
+            opportunities = _rows_to_dicts(cursor)
+        return jsonify(opportunities)
+    except Exception as e:
+        return jsonify({"message": "Error getting opportunities: " + str(e)}), 500
+    finally:
+        conn.close()
 
 @api_bp.route("/api/opportunities/<opportunity_id>")
 def get_opportunity_by_id(opportunity_id):
@@ -170,13 +175,18 @@ def get_opportunity_by_id(opportunity_id):
     Returns:
         opportunity
     """
-    conn = get_db_connection(test_mode=is_test_mode())
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM grants WHERE opportunity_id = %s", (opportunity_id,))
-    opportunity = _row_to_dict(cursor)
-    if opportunity is None:
-        return jsonify({}), 404
-    return jsonify(opportunity)
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM grants WHERE opportunity_id = %s", (opportunity_id,))
+        opportunity = _row_to_dict(cursor)
+        if opportunity is None:
+            return jsonify({}), 404
+        return jsonify(opportunity)
+    except Exception as e:
+        return jsonify({"message": "Error getting opportunity by id: " + str(e)}), 500
+    finally:
+        conn.close()
 
 @api_bp.route("/api/alerts")
 def get_alerts():
@@ -185,8 +195,13 @@ def get_alerts():
     Returns:
         list of alerts
     """
-    conn = get_db_connection(test_mode=is_test_mode())
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM grant_alerts order by detected_at desc limit 50")
-    alerts = _rows_to_dicts(cursor)
-    return jsonify(alerts)
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM grant_alerts order by detected_at desc limit 50")
+        alerts = _rows_to_dicts(cursor)
+        return jsonify(alerts)
+    except Exception as e:
+        return jsonify({"message": "Error getting alerts: " + str(e)}), 500
+    finally:
+        conn.close()
