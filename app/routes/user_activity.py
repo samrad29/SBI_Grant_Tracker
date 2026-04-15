@@ -189,6 +189,6 @@ def add_is_bookmarked_column():
     """
     conn = get_db_connection(test_mode=is_test_mode())
     cursor = conn.cursor()
-    cursor.execute("ALTER TABLE user_grant_activity ADD COLUMN is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_user_grant_activity_user_opportunity ON user_grant_activity(user_id, opportunity_id)")
     conn.commit()
     return jsonify({"message": "is_bookmarked column added successfully"})
