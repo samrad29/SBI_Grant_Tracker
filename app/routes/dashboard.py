@@ -90,3 +90,8 @@ def alerts_page():
 @dashboard_bp.route("/portal")
 def client_portal_page():
     return render_template("client_portal.html")
+
+
+@dashboard_bp.route("/api-docs")
+def api_docs_page():
+    return render_template("api_docs.html")

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SBI Grant Tracker API Docs</title>
+    <style>
+        :root {
+            --bg: #0b1220;
+            --panel: #111a2b;
+            --border: #2c3b55;
+            --text: #e6ecf5;
+            --muted: #9eb0cc;
+            --accent: #7dd3fc;
+            --ok: #86efac;
+            --warn: #fcd34d;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.45;
+        }
+        .wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .top {
+            margin-bottom: 20px;
+            border-left: 3px solid var(--accent);
+            padding-left: 14px;
+        }
+        h1, h2, h3 { margin: 0; }
+        h1 { font-size: 1.7rem; margin-bottom: 8px; }
+        h2 {
+            margin-top: 26px;
+            margin-bottom: 12px;
+            color: var(--accent);
+            font-size: 1.05rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        p { margin: 0 0 8px; color: var(--muted); }
+        .endpoint {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            padding: 14px 16px;
+            margin-bottom: 14px;
+        }
+        .path {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .method {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            padding: 2px 8px;
+            border: 1px solid var(--ok);
+            color: var(--ok);
+        }
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.87rem;
+            color: #dbeafe;
+        }
+        .section-title {
+            margin-top: 10px;
+            margin-bottom: 6px;
+            font-size: 0.83rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #c9d7ee;
+        }
+        ul {
+            margin: 0 0 10px 18px;
+            padding: 0;
+            color: var(--muted);
+        }
+        li { margin-bottom: 4px; }
+        pre {
+            margin: 0;
+            padding: 10px 12px;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            background: #0a1322;
+            color: #dde8fb;
+            font-size: 0.82rem;
+            white-space: pre;
+        }
+        .note {
+            border: 1px solid #5b4a1c;
+            background: rgba(252, 211, 77, 0.08);
+            color: var(--warn);
+            padding: 10px 12px;
+            margin-top: 12px;
+            font-size: 0.88rem;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top">
+        <h1>SBI Grant Tracker API docs</h1>
+        <p>Reference for frontend integration. All endpoints below are currently <strong>GET</strong> and return JSON.</p>
+        <p>Use URL query parameters exactly as documented. For write actions (bookmark/checklist updates), requests still use query params even though they mutate data.</p>
+        <p><a href="/dashboard">← Mission Control</a></p>
+    </div>
+
+    <h2>Core data endpoints (`api.py`)</h2>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/opportunities</code></div>
+        <p>Lists opportunities. Supports either tag search, text search, or default top 50.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>tags</code> (optional): comma-separated tags, example <code>education,housing</code></li>
+            <li><code>q</code> (optional): free-text search on title/agency, example <code>tribal health</code></li>
+        </ul>
+        <div class="section-title">Response shape</div>
+        <ul>
+            <li>No params or <code>q</code>: array of basic grant objects</li>
+            <li>With <code>tags</code>: array of scored objects including <code>total_score</code> and <code>tag_scores</code></li>
+        </ul>
+        <div class="section-title">Example response (`tags=education,housing`)</div>
+<pre>[
+  {
+    "opportunity_id": "336489",
+    "title": "Community Learning Grant",
+    "agency": "Department of Education",
+    "status": "posted",
+    "total_score": 18.0,
+    "tag_scores": [
+      { "tag": "education", "tag_score": 10.0 },
+      { "tag": "housing", "tag_score": 8.0 }
+    ]
+  }
+]</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/opportunities/&lt;opportunity_id&gt;</code></div>
+        <p>Returns full grant details from the <code>grants</code> table for one opportunity.</p>
+        <div class="section-title">Path params</div>
+        <ul>
+            <li><code>opportunity_id</code> (required): opportunity identifier string</li>
+        </ul>
+        <div class="section-title">Example response (200)</div>
+<pre>{
+  "opportunity_id": "336489",
+  "number": "ED-GRANT-2026-01",
+  "title": "Community Learning Grant",
+  "agency": "Department of Education",
+  "status": "posted",
+  "posted_date": "2026-03-10",
+  "close_date": "2026-06-15",
+  "description": "Funding for local education initiatives.",
+  "updated_at": "2026-04-12T03:41:22"
+}</pre>
+        <div class="section-title">Not found</div>
+<pre>{}</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/alerts</code></div>
+        <p>Returns the 50 most recent alert records from <code>grant_alerts</code>.</p>
+        <div class="section-title">Query params</div>
+        <ul><li>None</li></ul>
+        <div class="section-title">Example response</div>
+<pre>[
+  {
+    "id": 421,
+    "opportunity_id": "336489",
+    "detected_at": "2026-04-13T10:07:00",
+    "alert_type": "deadline_changed",
+    "field": "close_date",
+    "old_value": "2026-06-01",
+    "new_value": "2026-06-15"
+  }
+]</pre>
+    </div>
+
+    <h2>User activity endpoints (`user_activity.py`)</h2>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/update_user_grant_status</code></div>
+        <p>Creates or updates a user's status for a grant in <code>user_grant_activity</code>.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>user_id</code> (required): user identifier string</li>
+            <li><code>opportunity_id</code> (required): grant id</li>
+            <li><code>status</code> (required): arbitrary status string (for example <code>saved</code>, <code>interested</code>, <code>submitted</code>)</li>
+        </ul>
+        <div class="section-title">Example response</div>
+<pre>{ "message": "Grant marked successfully" }</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/bookmark_grant</code></div>
+        <p>Bookmarks a grant for a user (<code>is_bookmarked = TRUE</code>).</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>user_id</code> (required)</li>
+            <li><code>opportunity_id</code> (required)</li>
+        </ul>
+        <div class="section-title">Example response</div>
+<pre>{ "message": "Grant bookmarked successfully" }</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/unbookmark_grant</code></div>
+        <p>Unbookmarks a grant for a user (<code>is_bookmarked = FALSE</code>).</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>user_id</code> (required)</li>
+            <li><code>opportunity_id</code> (required)</li>
+        </ul>
+        <div class="section-title">Example response</div>
+<pre>{ "message": "Grant unbookmarked successfully" }</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/get_bookmarked_grants</code></div>
+        <p>Returns all bookmarked grants for a user from <code>user_grant_activity</code>, newest first.</p>
+        <div class="section-title">Query params</div>
+        <ul><li><code>user_id</code> (required)</li></ul>
+        <div class="section-title">Example response</div>
+<pre>[
+  {
+    "user_id": "demo-user",
+    "opportunity_id": "336489",
+    "status": "saved",
+    "is_bookmarked": true,
+    "created_at": "2026-04-12T18:31:49"
+  }
+]</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/get_user_alerts</code></div>
+        <p>Returns up to 50 alerts for bookmarked grants for the specified user.</p>
+        <div class="section-title">Query params</div>
+        <ul><li><code>user_id</code> (required)</li></ul>
+        <div class="section-title">Example response</div>
+<pre>[
+  {
+    "user_id": "demo-user",
+    "opportunity_id": "336489",
+    "status": "saved",
+    "created_at": "2026-04-12T18:31:49",
+    "alert_type": "deadline_changed",
+    "field": "close_date",
+    "old_value": "2026-06-01",
+    "new_value": "2026-06-15",
+    "detected_at": "2026-04-13T10:07:00"
+  }
+]</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/get_checklist_items</code></div>
+        <p>Returns checklist items for one user + one opportunity, ordered by <code>item_id</code>.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>user_id</code> (required)</li>
+            <li><code>opportunity_id</code> (required)</li>
+        </ul>
+        <div class="section-title">Example response</div>
+<pre>[
+  {
+    "item_id": 12,
+    "user_id": "demo-user",
+    "opportunity_id": "336489",
+    "item_name": "Draft narrative",
+    "is_completed": false
+  }
+]</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/update_checklist_item</code></div>
+        <p>Updates <code>is_completed</code> for one checklist item.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>user_id</code> (required)</li>
+            <li><code>opportunity_id</code> (required)</li>
+            <li><code>item_id</code> (required)</li>
+            <li><code>is_completed</code> (required): accepts <code>true</code>/<code>false</code>, <code>1</code>/<code>0</code>, <code>yes</code>/<code>no</code>, <code>t</code>/<code>on</code></li>
+        </ul>
+        <div class="section-title">Example response</div>
+<pre>{ "message": "Checklist item updated successfully" }</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/user_activity/add_checklist_item</code></div>
+        <p>Adds a new checklist item for a user and grant.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>user_id</code> (required)</li>
+            <li><code>opportunity_id</code> (required)</li>
+            <li><code>item_name</code> (required): checklist text</li>
+        </ul>
+        <div class="section-title">Example response</div>
+<pre>{ "message": "Checklist item added successfully" }</pre>
+    </div>
+
+    <div class="note">
+        Error format: endpoints generally return HTTP 500 with JSON like
+        <code>{ "message": "Error ...: &lt;details&gt;" }</code> when exceptions occur.
+    </div>
+</div>
+</body>
+</html>
