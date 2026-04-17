@@ -220,3 +220,20 @@ def add_checklist_item():
         return jsonify({"message": "Error adding checklist item: " + str(e)}), 500
     finally: 
         conn.close()
+
+@user_activity_bp.route("/api/add_opportunity_source")
+def add_opportunity_source():
+    """
+    one time function to add the opportunity source to the database, need to add the column
+    """
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        cursor = conn.cursor()
+        cursor.execute("ALTER TABLE grants ADD COLUMN opportunity_source TEXT NOT NULL")
+        cursor.execute("UPDATE grants SET opportunity_source = 'grant.gov'")
+        conn.commit()
+        return jsonify({"message": "Opportunity source added successfully"})
+    except Exception as e:
+        return jsonify({"message": "Error adding opportunity source: " + str(e)}), 500
+    finally:
+        conn.close()
