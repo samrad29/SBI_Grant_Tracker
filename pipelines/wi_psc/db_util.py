@@ -185,7 +185,7 @@ def save_ai_extraction(conn, extraction: dict, url: str, webpage_text_hash: str)
         """,
         (
             "wi_psc_oei",
-            f"{url}-{program_name}",
+            f"WI_OEI_-{program_name}",
             -1,
             program_name,
             program_status,
