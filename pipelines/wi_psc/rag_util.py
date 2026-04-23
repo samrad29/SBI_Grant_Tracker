@@ -1,5 +1,5 @@
 """
-Attachment + program-page RAG using OpenAI embeddings and SQLite cache.
+Attachment + program-page RAG using OpenAI embeddings and Postgres cache.
 
 Env:
   OPENAI_API_KEY (required for indexing/retrieval)
@@ -160,7 +160,7 @@ def embed_texts_openai(texts: list[str], model: str | None = None) -> list[list[
 
 
 def _delete_documents_at_url(conn, attachment_url: str) -> None:
-    conn.execute("DELETE FROM attachment_documents WHERE attachment_url = ?", (attachment_url,))
+    conn.execute("DELETE FROM attachment_documents WHERE attachment_url = %s", (attachment_url,))
 
 
 def ensure_indexed(
@@ -173,7 +173,7 @@ def ensure_indexed(
     If (url, content_hash) already exists, return document id without re-embedding.
     Otherwise replace any prior rows for the same URL and insert chunks + vectors.
     """
-    from web_scraping_utils import hash_attachment_text
+    from pipelines.wi_psc.web_scraping_utils import hash_attachment_text
 
     embedding_model = embedding_model or get_embedding_model_name()
     t = (full_text or "").strip()
@@ -182,12 +182,12 @@ def ensure_indexed(
 
     h = hash_attachment_text(t)
     row = conn.execute(
-        "SELECT id FROM attachment_documents WHERE attachment_url = ? AND content_sha256 = ?",
+        "SELECT id FROM attachment_documents WHERE attachment_url = %s AND content_sha256 = %s",
         (attachment_url, h),
     ).fetchone()
     if row is not None:
         print(f"[rag] cache hit for {attachment_url[:80]}")
-        return int(row[0])
+        return int(row["id"] if isinstance(row, dict) else row[0])
 
     chunks = chunk_text(t)
     if not chunks:
@@ -199,23 +199,31 @@ def ensure_indexed(
 
     dim = len(vectors[0])
     _delete_documents_at_url(conn, attachment_url)
-    cur = conn.execute(
+    row = conn.execute(
         """
         INSERT INTO attachment_documents (attachment_url, content_sha256, char_len, embedding_model)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
         """,
         (attachment_url, h, len(t), embedding_model),
-    )
-    doc_id = int(cur.lastrowid)
+    ).fetchone()
+    doc_id = int(row["id"])
 
     for idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
-        ccur = conn.execute(
-            "INSERT INTO attachment_chunks (document_id, chunk_index, text) VALUES (?, ?, ?)",
+        chunk_row = conn.execute(
+            """
+            INSERT INTO attachment_chunks (document_id, chunk_index, text)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
             (doc_id, idx, chunk),
-        )
-        chunk_id = int(ccur.lastrowid)
+        ).fetchone()
+        chunk_id = int(chunk_row["id"])
         conn.execute(
-            "INSERT INTO attachment_chunk_embeddings (chunk_id, dim, vector) VALUES (?, ?, ?)",
+            """
+            INSERT INTO attachment_chunk_embeddings (chunk_id, dim, vector)
+            VALUES (%s, %s, %s)
+            """,
             (chunk_id, dim, _vec_to_blob(vec)),
         )
 
@@ -259,7 +267,7 @@ def retrieve_for_program(
 
     embedding_model = embedding_model or get_embedding_model_name()
 
-    placeholders = ",".join("?" * len(document_ids))
+    placeholders = ",".join("%s" for _ in document_ids)
     rows = conn.execute(
         f"""
         SELECT c.text, c.chunk_index, d.attachment_url, e.vector

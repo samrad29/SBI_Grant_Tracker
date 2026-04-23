@@ -3,13 +3,18 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from db.db_util import scalar_from_row
+
 
 def init_tables(conn):
     """
     Initialize the tables for the wisconsin psc pipeline
     """
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(
+
+    id_pk = "BIGSERIAL PRIMARY KEY"
+    vector_type = "BYTEA"
+
+    statements = [
         """
 CREATE TABLE IF NOT EXISTS grants (
   opportunity_source TEXT NOT NULL,
@@ -44,7 +49,8 @@ CREATE TABLE IF NOT EXISTS grants (
 
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+);""",
+        """
 
 CREATE TABLE IF NOT EXISTS oei_programs (
     url TEXT NOT NULL PRIMARY KEY,
@@ -58,53 +64,60 @@ CREATE TABLE IF NOT EXISTS oei_programs (
     deadline_date TEXT,
     webpage_text_hash TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+);""",
+        f"""
 
 CREATE TABLE IF NOT EXISTS attachment_documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id {id_pk},
     attachment_url TEXT NOT NULL,
     content_sha256 TEXT NOT NULL,
     char_len INTEGER NOT NULL,
     embedding_model TEXT NOT NULL,
     ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(attachment_url, content_sha256)
-);
+);""",
+        f"""
 
 CREATE TABLE IF NOT EXISTS attachment_chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id {id_pk},
     document_id INTEGER NOT NULL REFERENCES attachment_documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     text TEXT NOT NULL,
     UNIQUE(document_id, chunk_index)
-);
+);""",
+        f"""
 
 CREATE TABLE IF NOT EXISTS attachment_chunk_embeddings (
     chunk_id INTEGER PRIMARY KEY REFERENCES attachment_chunks(id) ON DELETE CASCADE,
     dim INTEGER NOT NULL,
-    vector BLOB NOT NULL
-);
+    vector {vector_type} NOT NULL
+);""",
+        f"""
 
 CREATE TABLE IF NOT EXISTS ai_extraction_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id {id_pk},
     url TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     prompt TEXT NOT NULL,
     raw_response TEXT,
     extracted_json TEXT
 );
-"""
-    )
+""",
+    ]
+
+    for stmt in statements:
+        conn.execute(stmt)
     conn.commit()
 
 
 def get_stored_hash(conn, url: str) -> str | None:
     row = conn.execute(
-        "SELECT webpage_text_hash FROM oei_programs WHERE url = ?",
+        "SELECT webpage_text_hash FROM oei_programs WHERE url = %s",
         (url,),
     ).fetchone()
     if row is None:
         return None
-    return row[0]
+    return scalar_from_row(row)
 
 
 def save_ai_extraction(conn, extraction: dict, url: str, webpage_text_hash: str) -> None:
@@ -155,30 +168,60 @@ def save_ai_extraction(conn, extraction: dict, url: str, webpage_text_hash: str)
 
     conn.execute(
         """
-        INSERT INTO grants (
-            opportunity_source, 
-            opportunity_id, 
-            number, 
-            title, 
-            status, 
-            deadline_date,  
-            estimated_funding,
-            eligibilities, 
-            description, 
+        INSERT INTO oei_programs (
+            url,
+            program_name,
+            program_status,
             attachments,
-            updated_at, 
-            last_seen_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            elibilities,
+            description,
+            estimated_funding,
+            estimated_funding_description,
+            deadline_date,
+            webpage_text_hash
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT(url) DO UPDATE SET
-            status = excluded.status,
-            deadline_date = excluded.deadline_date,
-            last_updated_date = excluded.last_updated_date,
-            estimated_funding = excluded.estimated_funding,
-            eligibility_description = excluded.eligibility_description,
-            eligibilities = excluded.eligibilities,
+            program_name = excluded.program_name,
+            program_status = excluded.program_status,
+            attachments = excluded.attachments,
+            elibilities = excluded.elibilities,
             description = excluded.description,
-            updated_at = CURRENT_TIMESTAMP,
-            last_seen_at = CURRENT_TIMESTAMP
+            estimated_funding = excluded.estimated_funding,
+            estimated_funding_description = excluded.estimated_funding_description,
+            deadline_date = excluded.deadline_date,
+            webpage_text_hash = excluded.webpage_text_hash,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            url,
+            program_name,
+            program_status,
+            att_json,
+            elig_json,
+            description,
+            est_funding,
+            estimated_funding_description,
+            deadline_str,
+            webpage_text_hash,
+        ),
+    )
+
+    conn.execute(
+        """
+        INSERT INTO grants (
+            opportunity_source,
+            opportunity_id,
+            number,
+            title,
+            status,
+            deadline_date,
+            estimated_funding,
+            eligibilities,
+            description,
+            attachments,
+            updated_at,
+            last_seen_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             "wi_psc_oei",
@@ -192,7 +235,7 @@ def save_ai_extraction(conn, extraction: dict, url: str, webpage_text_hash: str)
             description,
             att_json,
             date_str,
-            date_str
+            date_str,
         ),
     )
     conn.commit()
@@ -213,7 +256,7 @@ def save_ai_extraction_log(
     conn.execute(
         """
         INSERT INTO ai_extraction_logs (url, prompt, raw_response, extracted_json)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
         """,
         (url, prompt, raw_response, extracted_json),
     )

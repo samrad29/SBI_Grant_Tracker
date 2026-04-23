@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
 import traceback
 
@@ -10,6 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from db.db_util import get_db_connection, is_test_mode
 from jobs.log_utils import log
 
 from pipelines.wi_psc.ai_utils import (
@@ -202,7 +202,7 @@ def print_latest_ai_log(conn, url: str) -> None:
         """
         SELECT id, url, created_at, prompt, raw_response, extracted_json
         FROM ai_extraction_logs
-        WHERE url = ?
+        WHERE url = %s
         ORDER BY id DESC
         LIMIT 1
         """,
@@ -236,7 +236,7 @@ def print_latest_ai_log(conn, url: str) -> None:
 def print_program_details(conn, url: str) -> None:
     """Pretty-print one oei_programs row (JSON columns decoded for readability)."""
     row = conn.execute(
-        "SELECT * FROM oei_programs WHERE url = ?",
+        "SELECT * FROM oei_programs WHERE url = %s",
         (url,),
     ).fetchone()
     if row is None:
@@ -277,9 +277,3 @@ def print_program_details(conn, url: str) -> None:
     print("\n" + "=" * 72 + "\n")
 
 
-if __name__ == "__main__":
-    init_tables(conn)
-    wis_psc_main(conn)
-#     print_program_details(conn, ENERGY_INNOVATION_URL)
-    print_latest_ai_log(conn, ENERGY_INNOVATION_URL)
-#     conn.close()
