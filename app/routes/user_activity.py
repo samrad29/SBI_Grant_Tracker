@@ -229,7 +229,7 @@ def add_opportunity_source():
     try:
         conn = get_db_connection(test_mode=is_test_mode())
         cursor = conn.cursor()
-        cursor.execute("ALTER TABLE grants ADD COLUMN opportunity_source TEXT NOT NULL")
+        cursor.execute("ALTER TABLE grants ADD COLUMN opportunity_source TEXT")
         cursor.execute("UPDATE grants SET opportunity_source = 'grant.gov'")
         conn.commit()
         return jsonify({"message": "Opportunity source added successfully"})

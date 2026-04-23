@@ -8,7 +8,7 @@ SCHEMA_SQL = r"""
 
 -- Current "latest known" view of each opportunity
 CREATE TABLE IF NOT EXISTS grants (
-  opportunity_source TEXT NOT NULL,
+  opportunity_source TEXT,
   opportunity_id TEXT NOT NULL,
 
   number TEXT,

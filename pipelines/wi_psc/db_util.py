@@ -168,46 +168,6 @@ def save_ai_extraction(conn, extraction: dict, url: str, webpage_text_hash: str)
 
     conn.execute(
         """
-        INSERT INTO oei_programs (
-            url,
-            program_name,
-            program_status,
-            attachments,
-            elibilities,
-            description,
-            estimated_funding,
-            estimated_funding_description,
-            deadline_date,
-            webpage_text_hash
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT(url) DO UPDATE SET
-            program_name = excluded.program_name,
-            program_status = excluded.program_status,
-            attachments = excluded.attachments,
-            elibilities = excluded.elibilities,
-            description = excluded.description,
-            estimated_funding = excluded.estimated_funding,
-            estimated_funding_description = excluded.estimated_funding_description,
-            deadline_date = excluded.deadline_date,
-            webpage_text_hash = excluded.webpage_text_hash,
-            updated_at = CURRENT_TIMESTAMP
-        """,
-        (
-            url,
-            program_name,
-            program_status,
-            att_json,
-            elig_json,
-            description,
-            est_funding,
-            estimated_funding_description,
-            deadline_str,
-            webpage_text_hash,
-        ),
-    )
-
-    conn.execute(
-        """
         INSERT INTO grants (
             opportunity_source,
             opportunity_id,
