@@ -221,16 +221,15 @@ def add_checklist_item():
     finally: 
         conn.close()
 
-@user_activity_bp.route("/api/add_opportunity_source")
-def add_opportunity_source():
+@user_activity_bp.route("/api/reset_oei_data")
+def reset_oei_data():
     """
     one time function to add the opportunity source to the database, need to add the column
     """
     try:
         conn = get_db_connection(test_mode=is_test_mode())
         cursor = conn.cursor()
-        cursor.execute("ALTER TABLE grants ADD COLUMN opportunity_source TEXT")
-        cursor.execute("UPDATE grants SET opportunity_source = 'grant.gov'")
+        cursor.execute("DELETE FROM grants WHERE opportunity_source = 'wi_psc_oei'")
         conn.commit()
         return jsonify({"message": "Opportunity source added successfully"})
     except Exception as e:
