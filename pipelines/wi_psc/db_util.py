@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 
 def init_tables(conn):
@@ -150,35 +151,48 @@ def save_ai_extraction(conn, extraction: dict, url: str, webpage_text_hash: str)
     deadline = extraction.get("deadline_date")
     deadline_str = None if deadline in (None, "") else str(deadline)
 
+    date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     conn.execute(
         """
-        INSERT INTO oei_programs (
-            url, program_name, program_status, attachments, elibilities,
-            description, estimated_funding, estimated_funding_description, deadline_date, webpage_text_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO grants (
+            opportunity_source, 
+            opportunity_id, 
+            number, 
+            title, 
+            status, 
+            deadline_date,  
+            estimated_funding,
+            eligibilities, 
+            description, 
+            attachments,
+            updated_at, 
+            last_seen_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(url) DO UPDATE SET
-            program_name = excluded.program_name,
-            program_status = excluded.program_status,
-            attachments = excluded.attachments,
-            elibilities = excluded.elibilities,
-            description = excluded.description,
-            estimated_funding = excluded.estimated_funding,
-            estimated_funding_description = excluded.estimated_funding_description,
+            status = excluded.status,
             deadline_date = excluded.deadline_date,
-            webpage_text_hash = excluded.webpage_text_hash,
-            updated_at = CURRENT_TIMESTAMP
+            last_updated_date = excluded.last_updated_date,
+            estimated_funding = excluded.estimated_funding,
+            eligibility_description = excluded.eligibility_description,
+            eligibilities = excluded.eligibilities,
+            description = excluded.description,
+            updated_at = CURRENT_TIMESTAMP,
+            last_seen_at = CURRENT_TIMESTAMP
         """,
         (
-            url,
+            "wi_psc_oei",
+            f"{url}-{program_name}",
+            -1,
             program_name,
             program_status,
-            att_json,
+            deadline_str,
+            est_funding,
             elig_json,
             description,
-            est_funding,
-            estimated_funding_description,
-            deadline_str,
-            webpage_text_hash,
+            att_json,
+            date_str,
+            date_str
         ),
     )
     conn.commit()
