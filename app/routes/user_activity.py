@@ -100,9 +100,21 @@ def get_bookmarked_grants():
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT * FROM user_grant_activity
-            WHERE user_id = %s AND is_bookmarked = TRUE
-            ORDER BY created_at DESC
+            SELECT
+                uga.user_id,
+                uga.opportunity_id,
+                uga.status,
+                uga.is_bookmarked,
+                uga.unbookmarked,
+                uga.created_at,
+                g.title,
+                g.agency,
+                g.estimated_funding,
+                g.grant_gov_url
+            FROM user_grant_activity uga
+            LEFT JOIN grants g ON g.opportunity_id = uga.opportunity_id
+            WHERE uga.user_id = %s AND uga.is_bookmarked = TRUE
+            ORDER BY uga.created_at DESC
             """,
             (user_id,),
         )
@@ -125,10 +137,22 @@ def get_unbookmarked_grants():
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT * FROM user_grant_activity
-            WHERE user_id = %s AND unbookmarked = TRUE
-            ORDER BY created_at DESC
-            limit 50
+            SELECT
+                uga.user_id,
+                uga.opportunity_id,
+                uga.status,
+                uga.is_bookmarked,
+                uga.unbookmarked,
+                uga.created_at,
+                g.title,
+                g.agency,
+                g.estimated_funding,
+                g.grant_gov_url
+            FROM user_grant_activity uga
+            LEFT JOIN grants g ON g.opportunity_id = uga.opportunity_id
+            WHERE uga.user_id = %s AND uga.unbookmarked = TRUE
+            ORDER BY uga.created_at DESC
+            LIMIT 50
             """,
             (user_id,),
         )
