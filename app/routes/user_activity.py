@@ -55,7 +55,7 @@ def bookmark_grant():
             """
             INSERT INTO user_grant_activity (user_id, opportunity_id, status, is_bookmarked)
             VALUES (%s, %s, 'saved', TRUE)
-            ON CONFLICT (user_id, opportunity_id) DO UPDATE SET is_bookmarked = TRUE and unbookmarked = FALSE
+            ON CONFLICT (user_id, opportunity_id) DO UPDATE SET is_bookmarked = TRUE, unbookmarked = FALSE
             """,
             (user_id, opportunity_id),
         )
