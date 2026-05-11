@@ -36,7 +36,7 @@ def main() -> int:
     parser.add_argument("--email", default=os.getenv("SEED_DEMO_USER_EMAIL", "demo@example.com"))
     parser.add_argument(
         "--password",
-        default=os.getenv("SEED_DEMO_USER_PASSWORD"),
+        default=os.getenv("SEED_DEMO_USER_PASSWORD", "test12345!"),
         help="Plain password to hash. Or set SEED_DEMO_USER_PASSWORD.",
     )
     parser.add_argument(
@@ -56,8 +56,7 @@ def main() -> int:
         print("Error: provide --password or set SEED_DEMO_USER_PASSWORD.", file=sys.stderr)
         return 1
 
-    test_mode = args.test_mode or is_test_mode()
-    conn = get_db_connection(test_mode=test_mode)
+    conn = get_db_connection()
     ph, _ = _placeholders(conn)
     pwd_hash = generate_password_hash(args.password)
 

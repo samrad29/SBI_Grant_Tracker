@@ -8,6 +8,8 @@ except ImportError:  # pragma: no cover
     psycopg = None
     dict_row = None
 
+from dotenv import load_dotenv
+
 def scalar_from_row(row):
     """
     First column of a single-column SELECT. Works for sqlite3.Row/tuple and
@@ -85,8 +87,10 @@ def get_db_connection(test_mode: bool = False):
     """
     Get a connection to the database
     """
+    load_dotenv()
     database_url = (os.getenv("DATABASE_URL") or "").strip()
     if database_url:
+        print(f"DATABASE_URL: {database_url}")
         if psycopg is None:
             raise RuntimeError("psycopg is required for DATABASE_URL connections.")
         print("Connecting to Postgres via DATABASE_URL")
