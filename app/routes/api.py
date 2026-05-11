@@ -165,7 +165,9 @@ def get_opportunities():
             opportunities = _rows_to_dicts(cursor)
         else:
             cursor = conn.cursor()
-            cursor.execute("SELECT opportunity_id, title, agency, status FROM grants limit 50")
+            cursor.execute(
+                "SELECT opportunity_id, title, agency, status, estimated_funding, grant_gov_url FROM grants LIMIT 50"
+            )
             opportunities = _rows_to_dicts(cursor)
         return jsonify(opportunities)
     except Exception as e:
