@@ -90,7 +90,6 @@ def get_db_connection(test_mode: bool = False):
     load_dotenv()
     database_url = (os.getenv("DATABASE_URL") or "").strip()
     if database_url:
-        print(f"DATABASE_URL: {database_url}")
         if psycopg is None:
             raise RuntimeError("psycopg is required for DATABASE_URL connections.")
         print("Connecting to Postgres via DATABASE_URL")
