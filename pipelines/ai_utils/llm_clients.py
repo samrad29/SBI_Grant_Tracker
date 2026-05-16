@@ -1,5 +1,10 @@
+import os
+
+from groq import Groq
+from openai import OpenAI
+
+from pipelines.ai_utils.llm_utils import TokenTracker, with_backoff
 from pipelines.ai_utils.req_resp_obj import LLMRequest, LLMResponse
-from pipelines.ai_utils.llm_utils import with_backoff
 
 
 class GroqProvider:
@@ -72,3 +77,15 @@ class LLMService:
         )
 
         return response
+
+
+def create_llm_service(job_id: int = -1) -> LLMService:
+    """Build an LLMService with Groq/OpenAI providers and token tracking."""
+    token_tracker = TokenTracker(job_id)
+    groq_provider = GroqProvider(client=Groq(api_key=os.getenv("GROQ_API_KEY")))
+    openai_provider = OpenAIProvider(client=OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
+    return LLMService(
+        groq_provider=groq_provider,
+        openai_provider=openai_provider,
+        token_tracker=token_tracker,
+    )

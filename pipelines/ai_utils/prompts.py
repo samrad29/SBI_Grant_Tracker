@@ -4,6 +4,7 @@ This module will contain the functions to use the AI models to help with the RFP
 General Structure is to send to llama on groq to classify if the text is an rfp or now. 
 Then, if it is, we can use gpt-4o-mini to extract the data.
 """
+from __future__ import annotations
 
 from operator import truediv
 import os
@@ -187,4 +188,66 @@ def ai_tribal_eligibility_check(llm_service, grant):
         return _normalize_tribal_result(parsed)
     except Exception as e:
         print("Error parsing JSON in ai_tribal_eligibility_check:", e)
+        return None
+
+
+def ai_classify_deadline_passed(
+    llm_service: LLMService,
+    *,
+    deadline_date: str | None,
+    deadline_description: str | None,
+    reference_date: str,
+) -> dict | None:
+    """
+    Use Groq to decide whether a grant deadline has passed as of reference_date.
+    Returns parsed JSON dict or None on failure.
+    """
+    desc = (deadline_description or "").strip() or "(none)"
+    ddate = (deadline_date or "").strip() or "(none)"
+    system_content = (
+        "You evaluate grant application deadlines.\n"
+        "Return ONLY valid JSON in this format:\n"
+        '{"deadline_passed": boolean, "effective_deadline": "YYYY-MM-DD or null", '
+        '"confidence": "high|medium|low", "reasoning": "brief explanation"}\n'
+        "Do not include any text outside the JSON object."
+    )
+    user_content = (
+        f"Today's reference date is {reference_date} (YYYY-MM-DD).\n\n"
+        f"deadline_date field: {ddate}\n"
+        f"deadline_description field:\n{desc}\n\n"
+        "Decide whether the grant application or submission deadline has PASSED "
+        f"as of {reference_date}.\n\n"
+        "Rules:\n"
+        "- Rolling, ongoing, open until filled, or no fixed deadline → deadline_passed=false.\n"
+        "- If multiple dates, use the final application/submission deadline.\n"
+        "- If only a calendar date with no time, treat the deadline as end of that day.\n"
+        "- If information is missing or too ambiguous, deadline_passed=false and confidence=low."
+    )
+    groq_model_name = (
+        os.getenv("GROQ_MODEL")
+        or os.getenv("GROQ_MODEL_NAME")
+        or "llama-3.3-70b-versatile"
+    )
+    req = LLMRequest(
+        model=groq_model_name,
+        provider="groq",
+        messages=[
+            LLMMessage(role="system", content=system_content),
+            LLMMessage(role="user", content=user_content),
+        ],
+    )
+    result: LLMResponse = llm_service.generate(req)
+    if not result.content:
+        print("No content returned from AI in ai_classify_deadline_passed")
+        return None
+    try:
+        parsed = _extract_json_payload(result.content)
+        data = json.loads(parsed)
+        if not isinstance(data, dict):
+            print("Unexpected JSON shape in ai_classify_deadline_passed")
+            return None
+        return data
+    except Exception as e:
+        print(result.content)
+        print("Error parsing JSON in ai_classify_deadline_passed:", e)
         return None
