@@ -3,7 +3,6 @@ from pipelines.gran_gov.init_tables import create_tables
 from pipelines.gran_gov.ingestion_loop import daily_ingestion
 from pipelines.gran_gov.ingestion_utils import trim_opportunity_ids, update_last_seen_at, archive_old_grants
 from jobs.log_utils import log
-from db.db_util import is_test_mode
 import os
 
 SEARCH_URL = "https://api.grants.gov/v1/api/search2"
@@ -90,4 +89,5 @@ def grants_main(conn, job_id: int, daily: bool = True) -> dict:
     archived_grants = archive_old_grants(conn, job_id)
     log(conn, job_id, f"Archived {archived_grants} grants that have not been seen in the past 5 days.", "INFO")
     print(f"Archived {archived_grants} grants that have not been seen in the past 5 days.")
+
     return stats

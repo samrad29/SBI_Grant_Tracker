@@ -126,7 +126,10 @@ def upsert_grant_current(conn, normalized: dict[str, Any]):
             title=excluded.title,
             agency=excluded.agency,
             agency_code=excluded.agency_code,
-            status=excluded.status,
+            status=CASE
+                WHEN LOWER(TRIM(COALESCE(grants.status, ''))) = 'closed' THEN grants.status
+                ELSE excluded.status
+            END,
             posted_date=excluded.posted_date,
             close_date=excluded.close_date,
             deadline_date=excluded.deadline_date,

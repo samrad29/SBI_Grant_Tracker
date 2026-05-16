@@ -142,7 +142,8 @@ def get_opportunities():
                     WHERE LOWER(tag) = ANY(%s)
                 ) AS grant_tags
                     ON grants.opportunity_id = grant_tags.opportunity_id
-                WHERE grant_tags.total_score > 0
+                left join tribal_eligibility on grants.opportunity_id = tribal_eligibility.opportunity_id
+                WHERE grant_tags.total_score > 0 and grants.status in ('posted', 'forecasted') and tribal_eligibility.is_tribal_eligible = true
                 ORDER BY grant_tags.total_score DESC
                 """,
                 (tag_list_lower,),
@@ -156,7 +157,8 @@ def get_opportunities():
                 """
                 SELECT opportunity_id, title, agency, status, estimated_funding, grant_gov_url
                 FROM grants
-                WHERE title ILIKE %s OR agency ILIKE %s
+                left join tribal_eligibility on grants.opportunity_id = tribal_eligibility.opportunity_id
+                WHERE title ILIKE %s OR agency ILIKE %s and status in ('posted', 'forecasted') and tribal_eligibility.is_tribal_eligible = true
                 ORDER BY posted_date DESC NULLS LAST, title
                 LIMIT 50
                 """,
@@ -166,7 +168,7 @@ def get_opportunities():
         else:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT opportunity_id, title, agency, status, estimated_funding, grant_gov_url FROM grants LIMIT 50"
+                "SELECT opportunity_id, title, agency, status, estimated_funding, grant_gov_url FROM grants left join tribal_eligibility on grants.opportunity_id = tribal_eligibility.opportunity_id WHERE status in ('posted', 'forecasted') and tribal_eligibility.is_tribal_eligible = true LIMIT 50"
             )
             opportunities = _rows_to_dicts(cursor)
         return jsonify(opportunities)
