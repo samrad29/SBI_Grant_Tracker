@@ -43,7 +43,7 @@ def create_app():
 
     CORS(
         app,
-        origins=["https://sbigrants.vercel.app", "portal.sunbearindustries.com"],
+        origins=["https://sbigrants.vercel.app", "https://portal.sunbearindustries.com"],
         supports_credentials=True,  # needed if you use sessions/cookies
     )
 
