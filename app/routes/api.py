@@ -159,7 +159,8 @@ def get_opportunities():
                 FROM grants
                 left join tribal_eligibility 
                 on grants.opportunity_id = tribal_eligibility.opportunity_id
-                WHERE grants.title ILIKE %s OR grants.agency ILIKE %s and grants.status in ('posted', 'forecasted') and tribal_eligibility.is_tribal_eligible = true
+                WHERE grants.title ILIKE %s OR grants.agency ILIKE %s
+                    and tribal_eligibility.is_tribal_eligible = true
                 ORDER BY posted_date DESC NULLS LAST, title
                 LIMIT 50
                 """,
@@ -173,7 +174,10 @@ def get_opportunities():
                 FROM grants 
                 left join tribal_eligibility 
                 on grants.opportunity_id = tribal_eligibility.opportunity_id 
-                WHERE tribal_eligibility.is_tribal_eligible = true LIMIT 50"""
+                WHERE tribal_eligibility.is_tribal_eligible = true 
+                and grants.status in ('posted', 'forecasted')
+                LIMIT 50"""
+
             )
             opportunities = _rows_to_dicts(cursor)
         return jsonify(opportunities)
