@@ -124,6 +124,7 @@ def get_opportunities():
                 SELECT
                     grants.opportunity_id,
                     grants.title,
+                    grants.description,
                     grants.agency,
                     grants.status,
                     grants.estimated_funding,
@@ -155,7 +156,14 @@ def get_opportunities():
             pattern = f"%{q_raw}%"
             cursor.execute(
                 """
-                SELECT grants.opportunity_id, grants.title, grants.agency, grants.status, grants.estimated_funding, grants.grant_gov_url
+                SELECT
+                    grants.opportunity_id, 
+                    grants.title, 
+                    grants.description,
+                    grants.agency, 
+                    grants.status, 
+                    grants.estimated_funding, 
+                    grants.grant_gov_url
                 FROM grants
                 left join tribal_eligibility 
                 on grants.opportunity_id = tribal_eligibility.opportunity_id
@@ -170,7 +178,15 @@ def get_opportunities():
         else:
             cursor = conn.cursor()
             cursor.execute(
-                """SELECT grants.opportunity_id, grants.title, grants.agency, grants.status, grants.estimated_funding, grants.grant_gov_url 
+                """
+                SELECT 
+                    grants.opportunity_id, 
+                    grants.title, 
+                    grants.description, 
+                    grants.agency, 
+                    grants.status, 
+                    grants.estimated_funding, 
+                    grants.grant_gov_url 
                 FROM grants 
                 left join tribal_eligibility 
                 on grants.opportunity_id = tribal_eligibility.opportunity_id 
