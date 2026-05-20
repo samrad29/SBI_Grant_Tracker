@@ -118,42 +118,112 @@
         <p>For mutating actions (bookmarks, checklist, project tasks), the handlers still use GET with query parameters.</p>
     </div>
 
+    <h2>Authentication (`auth.py`)</h2>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">POST</span><code>/api/auth/login</code></div>
+        <p>Validates email/password against <code>users</code> and sets <code>session["user_id"]</code> (signed cookie; requires <code>SECRET_KEY</code> in production).</p>
+        <div class="section-title">Request body (JSON)</div>
+        <ul>
+            <li><code>email</code> (required)</li>
+            <li><code>password</code> (required)</li>
+        </ul>
+        <div class="section-title">Example response (200)</div>
+<pre>{ "message": "User logged in successfully", "user_id": "demo-user" }</pre>
+        <p>401: <code>{ "message": "Invalid email or password" }</code></p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/auth/session</code></div>
+        <p>Returns the current session user id.</p>
+        <div class="section-title">Example response (200)</div>
+<pre>{ "user_id": "demo-user" }</pre>
+        <p>401: <code>{ "message": "Not authenticated" }</code></p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">POST</span><code>/api/auth/logout</code></div>
+        <p>Clears <code>session["user_id"]</code>.</p>
+        <div class="section-title">Example response (200)</div>
+<pre>{ "message": "User logged out successfully" }</pre>
+    </div>
+
+    <h2>Grant status values</h2>
+    <div class="endpoint">
+        <p>Opportunity list endpoints only return grants where <code>grants.status</code> is <code>posted</code> or <code>forecasted</code> (open listings from Grants.gov normalization).</p>
+        <ul>
+            <li><code>posted</code> / <code>forecasted</code> — active synopsis or forecast from ingestion.</li>
+            <li><code>closed</code> — application deadline has passed. Set by the offline script <code>python -m scripts.check_past_deadlines</code> (Groq interprets deadline fields). Daily ingestion refreshes other columns but <strong>does not</strong> overwrite <code>closed</code> back to posted/forecasted for the same <code>opportunity_id</code>.</li>
+            <li><code>archived</code> — not seen on the Grants.gov search feed for several days (pipeline archive step). Excluded from <code>/api/opportunities</code> like <code>closed</code>.</li>
+        </ul>
+        <p>Detail view <code>/api/opportunities/&lt;id&gt;</code> returns any row in <code>grants</code>, including <code>closed</code> or <code>archived</code>, if you still have the id.</p>
+    </div>
+
+    <h2>Public link (`grant_gov_url`)</h2>
+    <div class="endpoint">
+        <p>List and detail responses include <code>grant_gov_url</code>: the best public “more information” link for the opportunity, computed at ingestion (and backfill) by <code>compute_grant_public_url</code> in <code>pipelines/gran_gov/ingestion_utils.py</code>.</p>
+        <ul>
+            <li>If Grants.gov provides a funding description link (<code>link_url</code> on the synopsis), that URL is stored.</li>
+            <li>If no such link exists, <code>grant_gov_url</code> is <strong><code>null</code></strong> in JSON (SQL <code>NULL</code> in the database). The UI should treat missing links as “no public URL available,” not as a broken Grants.gov detail page.</li>
+        </ul>
+        <p>Related column <code>link_url</code> on the full detail payload is the raw funding-description link from the API (also may be null).</p>
+    </div>
+
     <h2>Core data endpoints (`api.py`)</h2>
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/opportunities</code></div>
-        <p>Lists opportunities. Supports either tag search, text search, or default top 50.</p>
+        <p>Lists tribal-eligible, <strong>open</strong> opportunities (<code>status</code> in <code>posted</code>, <code>forecasted</code>). Supports tag search, text search, or a default list (up to 50 rows).</p>
+        <div class="section-title">Filters (all modes)</div>
+        <ul>
+            <li>Inner join <code>tribal_eligibility</code> with <code>is_tribal_eligible = true</code>.</li>
+            <li><code>grants.status IN ('posted', 'forecasted')</code> — <code>closed</code> and <code>archived</code> grants are omitted.</li>
+        </ul>
         <div class="section-title">Query params</div>
         <ul>
-            <li><code>tags</code> (optional): comma-separated tags, example <code>education,housing</code>. Matching is case-insensitive.</li>
-            <li><code>q</code> (optional): free-text search on title/agency (Postgres <code>ILIKE</code>), example <code>tribal health</code></li>
+            <li><code>tags</code> (optional): comma-separated tags, example <code>Housing,Energy</code>. Matching is case-insensitive against <code>grant_tags.tag</code>.</li>
+            <li><code>q</code> (optional): substring match on <code>title</code> or <code>agency</code> (Postgres <code>ILIKE</code>), example <code>tribal health</code></li>
         </ul>
         <div class="section-title">Precedence</div>
         <ul>
             <li>If <code>tags</code> is non-empty, tag mode is used (even if <code>q</code> is also present).</li>
             <li>Else if <code>q</code> is non-empty, search mode is used.</li>
-            <li>Else: simple list of up to 50 rows from <code>grants</code>.</li>
+            <li>Else: default list (up to 50), ordered by database default.</li>
         </ul>
         <div class="section-title">Response shape</div>
         <ul>
-            <li>Default: <code>opportunity_id</code>, <code>title</code>, <code>agency</code>, <code>status</code></li>
-            <li>With <code>q</code>: same four fields, ordered by <code>posted_date</code> then <code>title</code></li>
-            <li>With <code>tags</code>: aggregated one object per opportunity with <code>total_score</code>, <code>tag_scores</code> (array of <code>tag</code> / <code>tag_score</code>), plus grant fields selected in SQL (e.g. <code>award_floor</code>, <code>award_ceiling</code>, <code>grant_gov_url</code>). The handler also selects <code>funding_amount</code>; the pipeline schema in <code>init_tables.py</code> currently uses <code>estimated_funding</code>—add a column/alias or change the query so tag mode matches your database.</li>
+            <li>Default and <code>q</code>: <code>opportunity_id</code>, <code>title</code>, <code>description</code>, <code>agency</code>, <code>status</code>, <code>estimated_funding</code>, <code>grant_gov_url</code> (string URL or <code>null</code> if none was found). Search mode orders by <code>posted_date DESC NULLS LAST</code>, then <code>title</code>.</li>
+            <li><code>tags</code>: one object per opportunity (aggregated in Python), ordered by <code>total_score</code> descending. Includes the same grant fields plus <code>total_score</code> and <code>tag_scores</code> (array of <code>{ "tag", "tag_score" }</code>). Only tags with positive scores for that opportunity are included.</li>
         </ul>
-        <div class="section-title">Example response (`tags=education,housing`)</div>
+        <div class="section-title">Example response (`tags=Housing,Energy`)</div>
 <pre>[
   {
     "opportunity_id": "336489",
     "title": "Community Learning Grant",
     "agency": "Department of Education",
     "status": "posted",
+    "estimated_funding": 250000.0,
+    "grant_gov_url": "https://www.grants.gov/.../funding-description-link",
     "total_score": 18.0,
     "tag_scores": [
-      { "tag": "education", "tag_score": 10.0 },
-      { "tag": "housing", "tag_score": 8.0 }
+      { "tag": "Housing", "tag_score": 10.0 },
+      { "tag": "Energy", "tag_score": 8.0 }
     ]
   }
 ]</pre>
+        <div class="section-title">Example response (default or <code>q=health</code>)</div>
+<pre>[
+  {
+    "opportunity_id": "336489",
+    "title": "Community Learning Grant",
+    "description": "Funding for local education initiatives.",
+    "agency": "Department of Education",
+    "status": "forecasted",
+    "estimated_funding": 250000.0,
+    "grant_gov_url": null
+  }
+]</pre>
+        <p>When <code>grant_gov_url</code> is null, hide or disable external “view on Grants.gov” actions unless you build a fallback from <code>number</code> yourself.</p>
     </div>
 
     <div class="note">
@@ -172,6 +242,7 @@
             <li><code>opportunity_id</code> (required): opportunity identifier string</li>
         </ul>
         <div class="section-title">Example response (200)</div>
+        <p>All columns from <code>grants</code> (including <code>deadline_date</code>, <code>deadline_description</code>, <code>status</code> such as <code>closed</code>, JSON text fields <code>alns</code>, <code>eligibilities</code>, etc.).</p>
 <pre>{
   "opportunity_id": "336489",
   "number": "ED-GRANT-2026-01",
@@ -180,9 +251,15 @@
   "status": "posted",
   "posted_date": "2026-03-10",
   "close_date": "2026-06-15",
+  "deadline_date": "2026-06-15",
+  "deadline_description": "Applications due by 11:59 PM Eastern.",
   "description": "Funding for local education initiatives.",
+  "estimated_funding": 250000.0,
+  "grant_gov_url": "https://www.grants.gov/.../funding-description-link",
+  "link_url": "https://www.grants.gov/.../funding-description-link",
   "updated_at": "2026-04-12T03:41:22"
 }</pre>
+        <p>Example with no public URL: <code>"grant_gov_url": null</code>, <code>"link_url": null</code>.</p>
         <div class="section-title">Not found</div>
         <p>HTTP <strong>404</strong> with empty JSON object:</p>
 <pre>{}</pre>
@@ -190,16 +267,20 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/opportunities/total_funding</code></div>
-        <p>Aggregated funding from the <code>grants</code> table.</p>
+        <p>Aggregated <code>SUM(estimated_funding)</code> and grant counts from <code>grants</code>. Does not apply the tribal-eligibility or open-status filters used on <code>/api/opportunities</code>.</p>
         <div class="section-title">Query params</div>
         <ul>
-            <li><code>tag</code> (optional): comma-separated tags. When provided, the server filters grants that have matching rows in <code>grant_tags</code> (implementation intended for per-tag totals).</li>
+            <li><code>tag</code> (optional): comma-separated tags. When provided, only grants with matching <code>grant_tags</code> rows (case-insensitive) and positive per-opportunity tag score totals are included; grouped by <code>tag</code>.</li>
         </ul>
         <div class="section-title">Response shape</div>
         <ul>
-            <li>Without <code>tag</code>: array of rows with <code>agency</code>, <code>total_funding</code>, <code>total_grants</code> (same <code>funding_amount</code> vs <code>estimated_funding</code> caveat as above)</li>
-            <li>With <code>tag</code>: array of per-tag aggregates (depends on DB columns; see handler in <code>app/routes/api.py</code>)</li>
+            <li>Without <code>tag</code>: array of <code>agency</code>, <code>total_funding</code>, <code>total_grants</code>, ordered by <code>total_funding</code> descending.</li>
+            <li>With <code>tag</code>: array of <code>tag</code>, <code>total_funding</code>, <code>total_grants</code>, ordered by <code>total_funding</code> descending.</li>
         </ul>
+        <div class="section-title">Example response (no tag)</div>
+<pre>[
+  { "agency": "Department of Education", "total_funding": 1200000.0, "total_grants": 42 }
+]</pre>
     </div>
 
     <div class="endpoint">
@@ -443,7 +524,7 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET / POST</span><code>/api/db_migration/update_grant_gov_url</code></div>
-        <p>Backfills <code>grants.grant_gov_url</code> for every row using the same fallback order as ingestion (<code>compute_grant_public_url</code>): use <code>link_url</code> (funding description link) when set; else Grants.gov detail <code>…/search-results-detail/&lt;opportunity_id&gt;</code> when <code>status</code> is <code>posted</code>; else Grants.gov search <code>…/search-grants?keywords=&lt;number&gt;</code> when <code>number</code> is set; else <code>null</code>.</p>
+        <p>Backfills <code>grants.grant_gov_url</code> for every row using <code>compute_grant_public_url</code>: copies the funding description <code>link_url</code> when present; otherwise sets <code>grant_gov_url</code> to <code>null</code> (same as ingestion).</p>
         <div class="section-title">Response</div>
 <pre>{ "message": "grant_gov_url refreshed …", "rows_updated": 0 }</pre>
     </div>

@@ -99,17 +99,15 @@ def _aggregate_tagged_opportunities(rows: list[dict]) -> list[dict]:
 @api_bp.route("/api/opportunities")
 def get_opportunities():
     """
-    List opportunities from the grants table.
+    List tribal-eligible opportunities with status posted or forecasted (open only).
 
-    Without ``tags`` or ``q``: up to 50 rows with opportunity_id, title, agency, status.
+    Without ``tags`` or ``q``: up to 50 rows (opportunity_id, title, description, agency,
+    status, estimated_funding, grant_gov_url).
 
-    With ``q``: title/agency substring match (case-insensitive), up to 50 rows, ordered by
-    posted_date then title.
+    With ``q``: title/agency ILIKE search, same fields, ordered by posted_date then title.
 
-    With ``tags`` (comma-separated): one object per opportunity that matches any
-    listed tag (case-insensitive), ordered by ``total_score`` descending. Each object includes
-    ``total_score`` (sum of matching tag scores for that opportunity) and
-    ``tag_scores``: all matching tags with their scores for that grant.
+    With ``tags`` (comma-separated): aggregated per opportunity, ordered by total_score
+    descending, with tag_scores for matching tags. Closed/archived grants are excluded.
     """
     try:
         conn = get_db_connection(test_mode=is_test_mode())

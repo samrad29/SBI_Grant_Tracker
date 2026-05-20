@@ -106,9 +106,8 @@ def reset_tables():
 @db_migration_bp.route("/api/db_migration/update_grant_gov_url", methods=["POST", "GET"])
 def update_grant_gov_url():
     """
-    Backfill ``grants.grant_gov_url`` using the same fallback strategy as ingestion
-    (``compute_grant_public_url``): funding ``link_url``, else posted detail URL,
-    else search by ``number``.
+    Backfill ``grants.grant_gov_url`` using ``compute_grant_public_url`` (same as
+    ingestion): funding ``link_url`` when set, else NULL.
     """
     conn = None
     try:
@@ -132,7 +131,7 @@ def update_grant_gov_url():
         conn.commit()
         return jsonify(
             {
-                "message": "grant_gov_url refreshed from link_url / status / number",
+                "message": "grant_gov_url refreshed from link_url (null when no public URL)",
                 "rows_updated": len(rows),
             }
         ), 200

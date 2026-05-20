@@ -26,13 +26,14 @@ def compute_grant_public_url(
     """
     if link_url and str(link_url).strip():
         return str(link_url).strip()
-    oid_s = str(opportunity_id).strip() if opportunity_id is not None else ""
-    if (status or "").strip().lower() == "posted" and oid_s:
-        return f"https://www.grants.gov/search-results-detail/{oid_s}"
-    num = (opportunity_number or "").strip() if opportunity_number else ""
-    if num:
-        return f"https://www.grants.gov/search-grants?keywords={quote(num)}"
-    return None
+    # oid_s = str(opportunity_id).strip() if opportunity_id is not None else ""
+    # if (status or "").strip().lower() == "posted" and oid_s:
+    #     return f"https://www.grants.gov/search-results-detail/{oid_s}"
+    # num = (opportunity_number or "").strip() if opportunity_number else ""
+    # if num:
+    #     return f"https://www.grants.gov/search-grants?keywords={quote(num)}"
+    else:
+        return None
 
 
 def _as_dict(value) -> dict:
