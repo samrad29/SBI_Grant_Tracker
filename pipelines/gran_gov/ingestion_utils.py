@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 from datetime import date, datetime, timezone
@@ -12,8 +14,16 @@ OPPORTUNITY_URL = "https://api.grants.gov/v1/api/fetchOpportunity"
 
 _ISO_DATE_PREFIX = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 
-# Grants.gov often sends human-readable dates (e.g. "September 15, 2024").
-_STRPTIME_FORMATS = (
+# Grants.gov postingDate examples: "Nov 13, 2023 12:00:00 AM EST", "September 15, 2024"
+_TZ_ABBREV_TAIL = re.compile(
+    r"\s+(?:EST|EDT|CST|CDT|MST|MDT|PST|PDT|UTC|GMT)\s*$",
+    re.IGNORECASE,
+)
+_DATETIME_FORMATS = (
+    "%b %d, %Y %I:%M:%S %p",
+    "%B %d, %Y %I:%M:%S %p",
+)
+_DATE_ONLY_FORMATS = (
     "%m/%d/%Y",
     "%m/%d/%y",
     "%B %d, %Y",
@@ -30,6 +40,8 @@ _STRPTIME_FORMATS = (
 def normalize_grant_date(value) -> str | None:
     """
     Parse Grants.gov date strings into ISO ``YYYY-MM-DD`` for storage and sorting.
+
+    Handles API values like ``Nov 13, 2023 12:00:00 AM EST`` (timezone suffix stripped).
 
     Returns None when the value is missing or cannot be parsed.
     """
@@ -52,11 +64,18 @@ def normalize_grant_date(value) -> str | None:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
         except ValueError:
             pass
-    for fmt in _STRPTIME_FORMATS:
-        try:
-            return datetime.strptime(s, fmt).date().isoformat()
-        except ValueError:
-            continue
+    s_no_tz = _TZ_ABBREV_TAIL.sub("", s).strip()
+    for candidate in (s_no_tz, s):
+        for fmt in _DATETIME_FORMATS:
+            try:
+                return datetime.strptime(candidate, fmt).date().isoformat()
+            except ValueError:
+                continue
+        for fmt in _DATE_ONLY_FORMATS:
+            try:
+                return datetime.strptime(candidate, fmt).date().isoformat()
+            except ValueError:
+                continue
     try:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).date().isoformat()
     except ValueError:
@@ -104,6 +123,26 @@ def _as_list(value) -> list:
     if isinstance(value, list):
         return value
     return []
+
+
+def extract_grant_dates_from_api_data(data: dict) -> dict[str, str | None]:
+    """
+    Pull date fields from a fetchOpportunity payload and normalize to ISO dates.
+    Same field mapping as ``normalize_opportunity``.
+    """
+    synopsis = _as_dict(data.get("synopsis"))
+    syn_avail = bool(synopsis)
+    if not synopsis:
+        synopsis = _as_dict(data.get("forecast"))
+        syn_avail = False
+    return {
+        "posted_date": normalize_grant_date(synopsis.get("postingDate")),
+        "close_date": normalize_grant_date(data.get("archiveDate")),
+        "deadline_date": normalize_grant_date(
+            synopsis.get("responseDateStr") if syn_avail else data.get("estApplicationResponseDate")
+        ),
+        "last_updated_date": normalize_grant_date(synopsis.get("lastUpdatedDate")),
+    }
 
 
 def fetch_opportunity(opportunity_id: int) -> dict:

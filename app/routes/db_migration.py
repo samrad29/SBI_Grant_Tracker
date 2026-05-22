@@ -1,9 +1,15 @@
 import sqlite3
+import time
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from db.db_util import get_db_connection, is_test_mode, row_get
-from pipelines.gran_gov.ingestion_utils import compute_grant_public_url, normalize_grant_date
+from pipelines.gran_gov.ingestion_utils import (
+    compute_grant_public_url,
+    extract_grant_dates_from_api_data,
+    fetch_opportunity,
+    normalize_grant_date,
+)
 from pipelines.gran_gov.relevancy import score_relevancy, save_relevancy_score
 from pipelines.gran_gov.ingestion_utils import fetch_opportunity
 
@@ -101,51 +107,6 @@ def reset_tables():
         return jsonify({"message": f"Tables reset successfully ({len(tables)} dropped)"}), 200
     except Exception as e:
         return jsonify({"message": "Error resetting tables: " + str(e)}), 500
-    finally:
-        if conn is not None:
-            conn.close()
-
-
-@db_migration_bp.route("/api/db_migration/normalize_grant_dates", methods=["POST", "GET"])
-def normalize_grant_dates():
-    """
-    Backfill ``posted_date``, ``close_date``, and ``last_updated_date`` to ISO
-    ``YYYY-MM-DD`` using ``normalize_grant_date`` (fixes lexical sort on spelled-out months).
-    """
-    conn = None
-    try:
-        conn = get_db_connection(test_mode=is_test_mode())
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT opportunity_id, posted_date, close_date, last_updated_date FROM grants"
-        )
-        rows = cur.fetchall()
-        ph = "?" if isinstance(conn, sqlite3.Connection) else "%s"
-        updated = 0
-        for row in rows:
-            oid = row_get(row, "opportunity_id", 0)
-            posted = normalize_grant_date(row_get(row, "posted_date", 1))
-            close = normalize_grant_date(row_get(row, "close_date", 2))
-            last_up = normalize_grant_date(row_get(row, "last_updated_date", 3))
-            cur.execute(
-                f"""
-                UPDATE grants
-                SET posted_date = {ph}, close_date = {ph}, last_updated_date = {ph}
-                WHERE opportunity_id = {ph}
-                """,
-                (posted, close, last_up, oid),
-            )
-            updated += 1
-        conn.commit()
-        return jsonify(
-            {
-                "message": "Grant dates normalized to YYYY-MM-DD where parseable",
-                "rows_updated": updated,
-                "rows_total": len(rows),
-            }
-        ), 200
-    except Exception as e:
-        return jsonify({"message": "Error normalizing grant dates: " + str(e)}), 500
     finally:
         if conn is not None:
             conn.close()

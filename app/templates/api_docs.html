@@ -524,9 +524,28 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET / POST</span><code>/api/db_migration/normalize_grant_dates</code></div>
-        <p>Backfills <code>posted_date</code>, <code>close_date</code>, and <code>last_updated_date</code> to ISO <code>YYYY-MM-DD</code> using the same parser as ingestion (<code>normalize_grant_date</code>). Run once if older rows still have spelled-out months (e.g. <code>September 15, 2024</code>), which sort incorrectly as plain text.</p>
+        <p>Re-parses date strings <strong>already stored</strong> on <code>grants</code> (no Grants.gov API call). Use only when the raw text is still in the database. If a previous run set dates to <code>null</code>, use <code>/api/db_migration/refetch_grant_dates</code> instead.</p>
         <div class="section-title">Response</div>
-<pre>{ "message": "Grant dates normalized to YYYY-MM-DD where parseable", "rows_updated": 0 }</pre>
+<pre>{ "message": "Grant dates normalized to YYYY-MM-DD where parseable", "rows_updated": 0, "rows_total": 0 }</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET / POST</span><code>/api/db_migration/refetch_grant_dates</code></div>
+        <p>Calls Grants.gov <code>fetchOpportunity</code> for each row in <code>grants</code>, reads <code>postingDate</code> (e.g. <code>Nov 13, 2023 12:00:00 AM EST</code>), and writes ISO <code>YYYY-MM-DD</code> to <code>posted_date</code>, <code>close_date</code>, <code>deadline_date</code>, <code>last_updated_date</code>. Use to recover after dates were nulled by a bad normalize pass.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>limit</code> (optional): max grants to process</li>
+            <li><code>delay</code> (optional): seconds between API calls (default <code>0.25</code>)</li>
+        </ul>
+        <div class="section-title">Response</div>
+<pre>{
+  "message": "Refetched grant dates from Grants.gov API",
+  "rows_total": 0,
+  "api_ok": 0,
+  "api_errors": 0,
+  "posted_date_set": 0,
+  "posted_date_still_null": 0
+}</pre>
     </div>
 
     <div class="endpoint">
