@@ -1,5 +1,6 @@
 import json
-from datetime import datetime
+import re
+from datetime import date, datetime, timezone
 from urllib.parse import quote
 
 import requests
@@ -8,6 +9,56 @@ from db.db_util import scalar_from_row
 from jobs.log_utils import log
 
 OPPORTUNITY_URL = "https://api.grants.gov/v1/api/fetchOpportunity"
+
+_ISO_DATE_PREFIX = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+# Grants.gov often sends human-readable dates (e.g. "September 15, 2024").
+_STRPTIME_FORMATS = (
+    "%m/%d/%Y",
+    "%m/%d/%y",
+    "%B %d, %Y",
+    "%b %d, %Y",
+    "%B %d %Y",
+    "%b %d %Y",
+    "%Y-%m-%d",
+    "%Y/%m/%d",
+)
+
+
+def normalize_grant_date(value) -> str | None:
+    """
+    Parse Grants.gov date strings into ISO ``YYYY-MM-DD`` for storage and sorting.
+
+    Returns None when the value is missing or cannot be parsed.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            ts = float(value)
+            if ts > 1e12:
+                ts /= 1000.0
+            return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+        except (OSError, OverflowError, ValueError):
+            return None
+    s = str(value).strip()
+    if not s:
+        return None
+    m = _ISO_DATE_PREFIX.match(s)
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+        except ValueError:
+            pass
+    for fmt in _STRPTIME_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return None
 
 
 def compute_grant_public_url(
@@ -134,11 +185,13 @@ def normalize_opportunity(data: dict) -> dict:
 
         # Status & dates
         "status": status_out,
-        "posted_date": synopsis.get("postingDate"),
-        "close_date": data.get("archiveDate"),
-        "deadline_date": synopsis.get("responseDateStr") if syn_avail else data.get("estApplicationResponseDate"),
+        "posted_date": normalize_grant_date(synopsis.get("postingDate")),
+        "close_date": normalize_grant_date(data.get("archiveDate")),
+        "deadline_date": normalize_grant_date(
+            synopsis.get("responseDateStr") if syn_avail else data.get("estApplicationResponseDate")
+        ),
         "deadline_description": synopsis.get("responseDateDesc") if syn_avail else data.get("estApplicationResponseDateDesc"),
-        "last_updated_date": synopsis.get("lastUpdatedDate"),
+        "last_updated_date": normalize_grant_date(synopsis.get("lastUpdatedDate")),
 
         # Funding
         "award_floor": synopsis.get("awardFloor"),

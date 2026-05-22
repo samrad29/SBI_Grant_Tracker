@@ -192,7 +192,7 @@
         </ul>
         <div class="section-title">Response shape</div>
         <ul>
-            <li>Default and <code>q</code>: <code>opportunity_id</code>, <code>title</code>, <code>description</code>, <code>agency</code>, <code>status</code>, <code>estimated_funding</code>, <code>grant_gov_url</code> (string URL or <code>null</code> if none was found). Search mode orders by <code>posted_date DESC NULLS LAST</code>, then <code>title</code>.</li>
+            <li>Default and <code>q</code>: includes <code>posted_date</code> (ISO <code>YYYY-MM-DD</code> after ingestion or backfill). Sorted by true calendar date (newest first), not alphabetical month names—legacy values like <code>September 15, 2024</code> are parsed in the API until you run <code>/api/db_migration/normalize_grant_dates</code>.</li>
             <li><code>tags</code>: one object per opportunity (aggregated in Python), ordered by <code>total_score</code> descending. Includes the same grant fields plus <code>total_score</code> and <code>tag_scores</code> (array of <code>{ "tag", "tag_score" }</code>). Only tags with positive scores for that opportunity are included.</li>
         </ul>
         <div class="section-title">Example response (`tags=Housing,Energy`)</div>
@@ -520,6 +520,13 @@
     <div class="endpoint">
         <div class="path"><span class="method">GET / POST</span><code>/api/db_migration/add_unbookmarked_grants</code></div>
         <p>Idempotent schema tweak: adds <code>unbookmarked</code> on <code>user_grant_activity</code> if missing.</p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET / POST</span><code>/api/db_migration/normalize_grant_dates</code></div>
+        <p>Backfills <code>posted_date</code>, <code>close_date</code>, and <code>last_updated_date</code> to ISO <code>YYYY-MM-DD</code> using the same parser as ingestion (<code>normalize_grant_date</code>). Run once if older rows still have spelled-out months (e.g. <code>September 15, 2024</code>), which sort incorrectly as plain text.</p>
+        <div class="section-title">Response</div>
+<pre>{ "message": "Grant dates normalized to YYYY-MM-DD where parseable", "rows_updated": 0 }</pre>
     </div>
 
     <div class="endpoint">

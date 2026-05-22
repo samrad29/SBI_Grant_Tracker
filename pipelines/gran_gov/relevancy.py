@@ -1,5 +1,7 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+
+from pipelines.gran_gov.ingestion_utils import normalize_grant_date
 
 DB_PATH = "grants.db"
 
@@ -53,12 +55,15 @@ AGENCY_BOOSTS = {
 }
 
 def calculate_freshness_score(posted_date_str):
+    iso = normalize_grant_date(posted_date_str)
+    if not iso:
+        return 0
     try:
-        posted_date = datetime.fromisoformat(posted_date_str)
-    except:
+        posted_date = date.fromisoformat(iso)
+    except ValueError:
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).date()
     days_old = (now - posted_date).days
 
     if days_old <= 7:

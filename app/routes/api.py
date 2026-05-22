@@ -4,8 +4,17 @@ API Routes used for data retrieval
 from flask import Blueprint, jsonify
 from flask import request
 from db.db_util import get_db_connection, is_test_mode
+from pipelines.gran_gov.ingestion_utils import normalize_grant_date
 
 api_bp = Blueprint("api", __name__)
+
+
+def _sort_rows_by_posted_date(rows: list[dict]) -> list[dict]:
+    """Newest first; unparsable dates last. Uses ISO parse, not lexical string compare."""
+    def key(r):
+        iso = normalize_grant_date(r.get("posted_date"))
+        return (0, iso) if iso else (1, "")
+    return sorted(rows, key=key, reverse=True)
 
 def _rows_to_dicts(cursor):
     """
@@ -104,7 +113,7 @@ def get_opportunities():
     Without ``tags`` or ``q``: up to 50 rows (opportunity_id, title, description, agency,
     status, estimated_funding, grant_gov_url).
 
-    With ``q``: title/agency ILIKE search, same fields, ordered by posted_date then title.
+    With ``q``: title/agency ILIKE search; newest ``posted_date`` first (parsed, not string sort).
 
     With ``tags`` (comma-separated): aggregated per opportunity, ordered by total_score
     descending, with tag_scores for matching tags. Closed/archived grants are excluded.
@@ -159,7 +168,8 @@ def get_opportunities():
                     grants.title, 
                     grants.description,
                     grants.agency, 
-                    grants.status, 
+                    grants.status,
+                    grants.posted_date,
                     grants.estimated_funding, 
                     grants.grant_gov_url
                 FROM grants
@@ -167,12 +177,11 @@ def get_opportunities():
                 on grants.opportunity_id = tribal_eligibility.opportunity_id
                 WHERE grants.title ILIKE %s OR grants.agency ILIKE %s
                     and tribal_eligibility.is_tribal_eligible = true
-                ORDER BY posted_date DESC NULLS LAST, title
-                LIMIT 50
+                    and grants.status in ('posted', 'forecasted')
                 """,
                 (pattern, pattern),
             )
-            opportunities = _rows_to_dicts(cursor)
+            opportunities = _sort_rows_by_posted_date(_rows_to_dicts(cursor))[:50]
         else:
             cursor = conn.cursor()
             cursor.execute(
@@ -182,7 +191,8 @@ def get_opportunities():
                     grants.title, 
                     grants.description, 
                     grants.agency, 
-                    grants.status, 
+                    grants.status,
+                    grants.posted_date,
                     grants.estimated_funding, 
                     grants.grant_gov_url 
                 FROM grants 
@@ -190,10 +200,9 @@ def get_opportunities():
                 on grants.opportunity_id = tribal_eligibility.opportunity_id 
                 WHERE tribal_eligibility.is_tribal_eligible = true 
                 and grants.status in ('posted', 'forecasted')
-                order by posted_date desc nulls last, title
-                LIMIT 50"""
+                """
             )
-            opportunities = _rows_to_dicts(cursor)
+            opportunities = _sort_rows_by_posted_date(_rows_to_dicts(cursor))[:50]
         return jsonify(opportunities)
     except Exception as e:
         return jsonify({"message": "Error getting opportunities: " + str(e)}), 500
