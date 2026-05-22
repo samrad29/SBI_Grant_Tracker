@@ -76,7 +76,7 @@ def calculate_freshness_score(posted_date_str):
     return 0
 
 
-def calculate_score(grant):
+def score_relevancy(grant):
     try:
         score = 0
 
