@@ -209,6 +209,43 @@ def get_opportunities():
     finally:
         conn.close()
 
+@api_bp.route("/api/get_opportunities_v2")
+def get_opportunities_v2():
+    """
+    Get opportunities with relevancy score
+    """
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        cursor = conn.cursor()
+        cursor.execute(
+                """
+                SELECT 
+                    grants.opportunity_id, 
+                    grants.title, 
+                    grants.description, 
+                    grants.agency, 
+                    grants.status,
+                    grants.posted_date,
+                    grants.estimated_funding, 
+                    grants.grant_gov_url,
+                    tribal_eligibility.relevancy_score
+                FROM grants 
+                LEFT JOIN tribal_eligibility 
+                    ON grants.opportunity_id = tribal_eligibility.opportunity_id 
+                WHERE tribal_eligibility.is_tribal_eligible = true 
+                AND grants.status IN ('posted', 'forecasted')
+                ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
+                LIMIT 50
+                """
+        )
+        opportunities = _rows_to_dicts(cursor)
+        return jsonify(opportunities)
+    except Exception as e:
+        return jsonify({"message": "Error getting opportunities: " + str(e)}), 500
+    finally:
+        conn.close()
+
+
 @api_bp.route("/api/opportunities/total_funding")
 def get_total_funding():
     """

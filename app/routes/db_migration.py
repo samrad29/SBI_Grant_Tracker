@@ -163,6 +163,7 @@ def add_relevancy_score():
                 "ALTER TABLE tribal_eligibility ADD COLUMN IF NOT EXISTS "
                 "relevancy_score INTEGER"
             )
+        print("Relevancy score column added")
         conn.commit()
         cur.execute("SELECT * FROM grants")
         rows = cur.fetchall()

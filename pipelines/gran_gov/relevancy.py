@@ -126,10 +126,11 @@ def score_relevancy(grant):
 
 def save_relevancy_score(conn, opportunity_id, relevancy_score):
     query = """
-    INSERT INTO tribal_eligibility (opportunity_id, score)
-    VALUES (%s, %s)
-    ON CONFLICT (opportunity_id) DO UPDATE SET
-    score = EXCLUDED.score
+    INSERT INTO tribal_eligibility (opportunity_id, relevancy_score)
+        VALUES (%s, %s)
+        ON CONFLICT (opportunity_id) DO UPDATE SET
+        relevancy_score = EXCLUDED.relevancy_score
     """
     conn.execute(query, (opportunity_id, relevancy_score))
     conn.commit()
+    print(f"Relevancy score saved for opportunity {opportunity_id}: {relevancy_score}")

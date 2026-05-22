@@ -472,7 +472,7 @@
                 <button type="submit" class="primary" id="search-btn">Search</button>
             </div>
         </form>
-        <p class="hint">If you enter tags, search will find grants that match any of the tags provided. Otherwise, title/agency search runs when that field is filled. Returns top 50 results.</p>
+        <p class="hint">Default list uses <code>/api/get_opportunities_v2</code> (top 50 tribal-eligible grants by relevancy score). Tag or title/agency search still uses <code>/api/opportunities</code>.</p>
         <div id="results-wrap">
             <table>
                 <thead>
@@ -480,6 +480,7 @@
                         <th>Title</th>
                         <th>Agency</th>
                         <th>Status</th>
+                        <th id="th-relevancy">Relevance</th>
                         <th>Bookmark</th>
                     </tr>
                 </thead>
@@ -589,6 +590,8 @@ function searchTextToTagsParam(text) {
 let bookmarkedOppIds = new Set();
 let activeOppId = null;
 let allAlerts = [];
+/** opportunity_id → grant row from last table load (v2 list). */
+let grantsById = new Map();
 
 function normalizeArrayResponse(payload) {
     return Array.isArray(payload) ? payload : [];
@@ -607,10 +610,16 @@ async function fetchBookmarkedIds() {
 }
 
 async function fetchGrantTitle(oid) {
-    const res = await fetch("/api/opportunities/" + encodeURIComponent(oid), fetchOpts);
+    const cached = grantsById.get(oid);
+    if (cached && cached.title != null) return String(cached.title);
+    const res = await fetch(
+        "/api/opportunities/" + encodeURIComponent(oid),
+        fetchOpts
+    );
     if (!res.ok) return null;
-    const g = await res.json();
-    return g.title != null ? String(g.title) : null;
+    const grant = await res.json();
+    if (!grant || grant.opportunity_id == null) return null;
+    return grant.title != null ? String(grant.title) : null;
 }
 
 async function renderBookmarks() {
@@ -807,30 +816,47 @@ async function toggleBookmark(opportunityId, bookmark) {
 async function loadGrantsTable() {
     const tbody = document.getElementById("grants-tbody");
     const btn = document.getElementById("search-btn");
+    const thRelevancy = document.getElementById("th-relevancy");
     const tagParam = searchTextToTagsParam(document.getElementById("tag-search").value);
     const qVal = document.getElementById("text-search").value.trim();
+    const useV2 = !tagParam && !qVal;
+    const colCount = 5;
     tbody.innerHTML = "";
     btn.disabled = true;
+    thRelevancy.hidden = false;
     try {
         await fetchBookmarkedIds();
-        let url = "/api/opportunities";
-        if (tagParam) {
-            url += "?tags=" + encodeURIComponent(tagParam);
-        } else if (qVal) {
-            url += "?q=" + encodeURIComponent(qVal);
+        let url;
+        if (useV2) {
+            url = "/api/get_opportunities_v2";
+        } else {
+            url = "/api/opportunities";
+            if (tagParam) {
+                url += "?tags=" + encodeURIComponent(tagParam);
+            } else if (qVal) {
+                url += "?q=" + encodeURIComponent(qVal);
+            }
         }
         const res = await fetch(url, fetchOpts);
         if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
+        grantsById = new Map();
         if (!data.length) {
-            tbody.innerHTML = "<tr><td colspan='4' class='empty'>No grants found.</td></tr>";
+            tbody.innerHTML =
+                "<tr><td colspan='" + colCount + "' class='empty'>No grants found.</td></tr>";
             return;
         }
         data.forEach((grant) => {
             const oid = grant.opportunity_id != null ? String(grant.opportunity_id) : "";
+            if (oid) grantsById.set(oid, grant);
             const title = grant.title != null ? String(grant.title) : "(no title)";
             const agency = grant.agency != null ? String(grant.agency) : "—";
             const status = grant.status != null ? String(grant.status) : "—";
+            const rel = useV2
+                ? grant.relevancy_score != null && grant.relevancy_score !== ""
+                    ? String(grant.relevancy_score)
+                    : "—"
+                : "—";
             const isBm = bookmarkedOppIds.has(oid);
             const tr = document.createElement("tr");
             const bmBtn = document.createElement("button");
@@ -849,12 +875,15 @@ async function loadGrantsTable() {
                 escapeHtml(agency) +
                 "</td><td>" +
                 escapeHtml(status) +
+                "</td><td class='mono'>" +
+                escapeHtml(rel) +
                 "</td>";
             tr.appendChild(tdBm);
             tbody.appendChild(tr);
         });
     } catch (err) {
-        tbody.innerHTML = "<tr><td colspan='4' class='error'>Failed to load grants.</td></tr>";
+        tbody.innerHTML =
+            "<tr><td colspan='" + colCount + "' class='error'>Failed to load grants.</td></tr>";
         console.error(err);
     } finally {
         btn.disabled = false;
