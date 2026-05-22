@@ -124,13 +124,22 @@ def score_relevancy(grant):
         return 0
 
 
-def save_relevancy_score(conn, opportunity_id, relevancy_score):
-    query = """
-    INSERT INTO tribal_eligibility (opportunity_id, relevancy_score)
-        VALUES (%s, %s)
-        ON CONFLICT (opportunity_id) DO UPDATE SET
-        relevancy_score = EXCLUDED.relevancy_score
+def save_relevancy_score(conn, opportunity_id, relevancy_score) -> bool:
     """
-    conn.execute(query, (opportunity_id, relevancy_score))
-    conn.commit()
-    print(f"Relevancy score saved for opportunity {opportunity_id}: {relevancy_score}")
+    Set ``relevancy_score`` on an existing ``tribal_eligibility`` row.
+
+    Does not insert a new row (other columns are NOT NULL). Returns True if a row
+    was updated.
+    """
+    cur = conn.execute(
+        """
+        UPDATE tribal_eligibility
+        SET relevancy_score = %s, updated_at = CURRENT_TIMESTAMP
+        WHERE opportunity_id = %s
+        """,
+        (relevancy_score, str(opportunity_id)),
+    )
+    updated = cur.rowcount is not None and cur.rowcount > 0
+    if updated:
+        print(f"Relevancy score saved for opportunity {opportunity_id}: {relevancy_score}")
+    return updated

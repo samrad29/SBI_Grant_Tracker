@@ -165,14 +165,33 @@ def add_relevancy_score():
             )
         print("Relevancy score column added")
         conn.commit()
-        cur.execute("SELECT * FROM grants")
+        cur.execute(
+            """
+            SELECT grants.*
+            FROM grants
+            INNER JOIN tribal_eligibility
+                ON grants.opportunity_id = tribal_eligibility.opportunity_id
+            """
+        )
         rows = cur.fetchall()
+        updated = 0
+        skipped = 0
         for row in rows:
             opportunity_id = row_get(row, "opportunity_id", 0)
             relevancy_score = score_relevancy(row)
-            save_relevancy_score(conn, opportunity_id, relevancy_score)
+            if save_relevancy_score(conn, opportunity_id, relevancy_score):
+                updated += 1
+            else:
+                skipped += 1
         conn.commit()
-        return jsonify({"message": "Relevancy score added to tribal_eligibility table"}), 200
+        return jsonify(
+            {
+                "message": "Relevancy scores updated on existing tribal_eligibility rows",
+                "rows_scored": len(rows),
+                "rows_updated": updated,
+                "rows_skipped": skipped,
+            }
+        ), 200
     except Exception as e:
         return jsonify({"message": "Error adding relevancy score: " + str(e)}), 500
     finally:
