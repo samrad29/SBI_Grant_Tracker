@@ -150,7 +150,7 @@ def update_grant_gov_url():
         if conn is not None:
             conn.close()
 
-
+@db_migration_bp.route("/api/db_migration/add_relevancy_score", methods=["POST", "GET"])
 def add_relevancy_score():
     """
     Add relevancy score to tribal_eligibility table.
