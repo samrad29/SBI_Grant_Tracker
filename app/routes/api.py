@@ -190,6 +190,7 @@ def get_opportunities():
                 on grants.opportunity_id = tribal_eligibility.opportunity_id 
                 WHERE tribal_eligibility.is_tribal_eligible = true 
                 and grants.status in ('posted', 'forecasted')
+                order by posted_date desc nulls last, title
                 LIMIT 50"""
 
             )
