@@ -22,6 +22,8 @@ _STRPTIME_FORMATS = (
     "%b %d %Y",
     "%Y-%m-%d",
     "%Y/%m/%d",
+    "%d-%b-%Y",
+    "%d %b %Y",
 )
 
 
@@ -41,7 +43,7 @@ def normalize_grant_date(value) -> str | None:
             return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
         except (OSError, OverflowError, ValueError):
             return None
-    s = str(value).strip()
+    s = re.sub(r"\s+", " ", str(value).strip())
     if not s:
         return None
     m = _ISO_DATE_PREFIX.match(s)

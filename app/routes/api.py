@@ -10,10 +10,10 @@ api_bp = Blueprint("api", __name__)
 
 
 def _sort_rows_by_posted_date(rows: list[dict]) -> list[dict]:
-    """Newest first; unparsable dates last. Uses ISO parse, not lexical string compare."""
+    """Newest first; missing or unparsable posted_date last."""
     def key(r):
-        iso = normalize_grant_date(r.get("posted_date"))
-        return (0, iso) if iso else (1, "")
+        # Empty string sorts below any YYYY-MM-DD; reverse=True puts dates first, nulls last.
+        return normalize_grant_date(r.get("posted_date")) or ""
     return sorted(rows, key=key, reverse=True)
 
 def _rows_to_dicts(cursor):
