@@ -192,7 +192,6 @@ def get_opportunities():
                 and grants.status in ('posted', 'forecasted')
                 order by posted_date desc nulls last, title
                 LIMIT 50"""
-
             )
             opportunities = _rows_to_dicts(cursor)
         return jsonify(opportunities)

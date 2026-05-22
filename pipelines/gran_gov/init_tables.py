@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS tribal_eligibility (
   eligibility_score INTEGER NOT NULL,
   eligibility_reasoning TEXT NOT NULL,
   is_tribal_eligible BOOLEAN NOT NULL,
+  relevancy_score INTEGER,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (opportunity_id) REFERENCES grants(opportunity_id)
     ON DELETE CASCADE

@@ -4,6 +4,9 @@ from flask import Blueprint, jsonify
 
 from db.db_util import get_db_connection, is_test_mode, row_get
 from pipelines.gran_gov.ingestion_utils import compute_grant_public_url
+from pipelines.gran_gov.relevancy import score_relevancy, save_relevancy_score
+from pipelines.gran_gov.ingestion_utils import fetch_opportunity
+
 
 try:
     from psycopg import sql
@@ -137,6 +140,34 @@ def update_grant_gov_url():
         ), 200
     except Exception as e:
         return jsonify({"message": "Error updating grant gov url: " + str(e)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def add_relevancy_score():
+    """
+    Add relevancy score to tribal_eligibility table.
+    """
+    conn = None
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        cur = conn.cursor()
+        cur.execute(
+                "ALTER TABLE tribal_eligibility ADD COLUMN IF NOT EXISTS "
+                "relevancy_score INTEGER"
+            )
+        conn.commit()
+        cur.execute("SELECT * FROM grants")
+        rows = cur.fetchall()
+        for row in rows:
+            opportunity_id = row_get(row, "opportunity_id", 0)
+            relevancy_score = score_relevancy(row)
+            save_relevancy_score(conn, opportunity_id, relevancy_score)
+        conn.commit()
+        return jsonify({"message": "Relevancy score added to tribal_eligibility table"}), 200
+    except Exception as e:
+        return jsonify({"message": "Error adding relevancy score: " + str(e)}), 500
     finally:
         if conn is not None:
             conn.close()
