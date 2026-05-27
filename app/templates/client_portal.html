@@ -479,7 +479,7 @@
                 <button type="submit" class="primary" id="search-btn">Search</button>
             </div>
         </form>
-        <p class="hint">Uses <code>/api/get_opportunities_v2</code>, sorted by <strong>tag total + tribal relevancy</strong>. <strong>Tag total</strong> is the sum of matching tag scores (all tags on the grant when not filtering by tag). <strong>Tribal relevancy</strong> comes from <code>tribal_eligibility.relevancy_score</code>.</p>
+        <p class="hint">Uses <code>/api/get_opportunities_v2</code>. Default and title/agency search sort by <strong>tribal relevancy</strong> only. When you enter <strong>tags</strong>, results sort by sum of those tag scores + tribal relevancy, and <strong>Tag total</strong> shows the matching tag breakdown.</p>
         <div id="results-wrap">
             <table>
                 <thead>
@@ -885,7 +885,9 @@ async function loadGrantsTable() {
             const title = grant.title != null ? String(grant.title) : "(no title)";
             const agency = grant.agency != null ? String(grant.agency) : "—";
             const status = grant.status != null ? String(grant.status) : "—";
-            const tagTotalHtml = formatTagTotalCell(grant, tagSearch);
+            const tagTotalHtml = tagSearch
+                ? formatTagTotalCell(grant, true)
+                : "—";
             const tribalRel = formatScoreCell(grant.relevancy_score);
             const isBm = bookmarkedOppIds.has(oid);
             const tr = document.createElement("tr");

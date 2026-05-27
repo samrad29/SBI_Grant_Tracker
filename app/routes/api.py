@@ -219,27 +219,13 @@ def get_opportunities():
     finally:
         conn.close()
 
-_V2_TAG_TOTALS_JOIN = """
-    LEFT JOIN (
-        SELECT opportunity_id, SUM(tag_score) AS total_score
-        FROM grant_tags
-        GROUP BY opportunity_id
-    ) AS tag_totals ON grants.opportunity_id = tag_totals.opportunity_id
-"""
-
-_V2_COMBINED_ORDER = """
-    ORDER BY (
-        COALESCE(tag_totals.total_score, 0) + COALESCE(tribal_eligibility.relevancy_score, 0)
-    ) DESC NULLS LAST
-"""
-
-
 @api_bp.route("/api/get_opportunities_v2")
 def get_opportunities_v2():
     """
-    Tribal-eligible open grants sorted by tag total_score + relevancy_score.
+    Tribal-eligible open grants.
 
-    Supports ``tags``, ``q``, or default list (top 50 by combined score).
+    With ``tags``: sorted by sum of matching tag scores + relevancy_score.
+    Without ``tags`` (default or ``q``): sorted by relevancy_score only (tag scores ignored).
     """
     try:
         conn = get_db_connection(test_mode=is_test_mode())
@@ -290,7 +276,7 @@ def get_opportunities_v2():
         elif q_raw:
             pattern = f"%{q_raw}%"
             cursor.execute(
-                f"""
+                """
                 SELECT
                     grants.opportunity_id,
                     grants.title,
@@ -300,16 +286,14 @@ def get_opportunities_v2():
                     grants.posted_date,
                     grants.estimated_funding,
                     grants.grant_gov_url,
-                    COALESCE(tag_totals.total_score, 0) AS total_score,
                     tribal_eligibility.relevancy_score
                 FROM grants
                 LEFT JOIN tribal_eligibility
                     ON grants.opportunity_id = tribal_eligibility.opportunity_id
-                {_V2_TAG_TOTALS_JOIN}
                 WHERE (grants.title ILIKE %s OR grants.agency ILIKE %s)
                     AND tribal_eligibility.is_tribal_eligible = true
                     AND grants.status IN ('posted', 'forecasted')
-                {_V2_COMBINED_ORDER}
+                ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
                 LIMIT 50
                 """,
                 (pattern, pattern),
@@ -317,7 +301,7 @@ def get_opportunities_v2():
             opportunities = _rows_to_dicts(cursor)
         else:
             cursor.execute(
-                f"""
+                """
                 SELECT
                     grants.opportunity_id,
                     grants.title,
@@ -327,15 +311,13 @@ def get_opportunities_v2():
                     grants.posted_date,
                     grants.estimated_funding,
                     grants.grant_gov_url,
-                    COALESCE(tag_totals.total_score, 0) AS total_score,
                     tribal_eligibility.relevancy_score
                 FROM grants
                 LEFT JOIN tribal_eligibility
                     ON grants.opportunity_id = tribal_eligibility.opportunity_id
-                {_V2_TAG_TOTALS_JOIN}
                 WHERE tribal_eligibility.is_tribal_eligible = true
                     AND grants.status IN ('posted', 'forecasted')
-                {_V2_COMBINED_ORDER}
+                ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
                 LIMIT 50
                 """
             )
