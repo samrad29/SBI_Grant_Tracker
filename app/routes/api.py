@@ -52,13 +52,17 @@ def _as_float(x):
         return None
 
 
+def _combined_rank_score(total_score, relevancy_score) -> float:
+    return (_as_float(total_score) or 0.0) + (_as_float(relevancy_score) or 0.0)
+
+
 def _aggregate_tagged_opportunities(rows: list[dict]) -> list[dict]:
     """
     Collapse one SQL row per (opportunity, tag) into one dict per opportunity.
 
     Each item: opportunity_id, title, agency, status, estimated_funding,
-    grant_gov_url, total_score, tag_scores
-    where tag_scores is [{ "tag", "tag_score" }, ...] sorted by tag_score desc.
+    grant_gov_url, total_score, tag_scores, and optionally relevancy_score.
+    Sorted by total_score + relevancy_score when relevancy_score is present.
     """
     by_oid: dict[str, dict] = {}
     for r in rows:
@@ -75,11 +79,14 @@ def _aggregate_tagged_opportunities(rows: list[dict]) -> list[dict]:
                 "estimated_funding": r.get("estimated_funding"),
                 "grant_gov_url": r.get("grant_gov_url"),
                 "total_score": _as_float(r.get("total_score")),
+                "relevancy_score": _as_float(r.get("relevancy_score")),
                 "_tag_best": {},
             }
         g = by_oid[oid_s]
         if r.get("total_score") is not None:
             g["total_score"] = _as_float(r.get("total_score"))
+        if r.get("relevancy_score") is not None:
+            g["relevancy_score"] = _as_float(r.get("relevancy_score"))
         tag = r.get("tag")
         if tag is None:
             continue
@@ -101,7 +108,10 @@ def _aggregate_tagged_opportunities(rows: list[dict]) -> list[dict]:
         )
         g["tag_scores"] = tag_scores
         out.append(g)
-    out.sort(key=lambda x: x.get("total_score") or 0.0, reverse=True)
+    out.sort(
+        key=lambda x: _combined_rank_score(x.get("total_score"), x.get("relevancy_score")),
+        reverse=True,
+    )
     return out
 
 
@@ -209,36 +219,127 @@ def get_opportunities():
     finally:
         conn.close()
 
+_V2_TAG_TOTALS_JOIN = """
+    LEFT JOIN (
+        SELECT opportunity_id, SUM(tag_score) AS total_score
+        FROM grant_tags
+        GROUP BY opportunity_id
+    ) AS tag_totals ON grants.opportunity_id = tag_totals.opportunity_id
+"""
+
+_V2_COMBINED_ORDER = """
+    ORDER BY (
+        COALESCE(tag_totals.total_score, 0) + COALESCE(tribal_eligibility.relevancy_score, 0)
+    ) DESC NULLS LAST
+"""
+
+
 @api_bp.route("/api/get_opportunities_v2")
 def get_opportunities_v2():
     """
-    Get opportunities with relevancy score
+    Tribal-eligible open grants sorted by tag total_score + relevancy_score.
+
+    Supports ``tags``, ``q``, or default list (top 50 by combined score).
     """
     try:
         conn = get_db_connection(test_mode=is_test_mode())
         cursor = conn.cursor()
-        cursor.execute(
+        tags_raw = request.args.get("tags", "")
+        tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+        q_raw = (request.args.get("q") or "").strip()
+        if tag_list:
+            tag_list_lower = [t.lower() for t in tag_list]
+            cursor.execute(
                 """
-                SELECT 
-                    grants.opportunity_id, 
-                    grants.title, 
-                    grants.description, 
-                    grants.agency, 
+                SELECT
+                    grants.opportunity_id,
+                    grants.title,
+                    grants.description,
+                    grants.agency,
                     grants.status,
-                    grants.posted_date,
-                    grants.estimated_funding, 
+                    grants.estimated_funding,
+                    grant_tags.tag,
+                    grant_tags.tag_score,
+                    grant_tags.total_score,
                     grants.grant_gov_url,
                     tribal_eligibility.relevancy_score
-                FROM grants 
-                LEFT JOIN tribal_eligibility 
-                    ON grants.opportunity_id = tribal_eligibility.opportunity_id 
-                WHERE tribal_eligibility.is_tribal_eligible = true 
-                AND grants.status IN ('posted', 'forecasted')
-                ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
+                FROM grants
+                INNER JOIN (
+                    SELECT
+                        opportunity_id,
+                        tag,
+                        tag_score,
+                        SUM(tag_score) OVER (PARTITION BY opportunity_id) AS total_score
+                    FROM grant_tags
+                    WHERE LOWER(tag) = ANY(%s)
+                ) AS grant_tags
+                    ON grants.opportunity_id = grant_tags.opportunity_id
+                LEFT JOIN tribal_eligibility
+                    ON grants.opportunity_id = tribal_eligibility.opportunity_id
+                WHERE grant_tags.total_score > 0
+                    AND grants.status IN ('posted', 'forecasted')
+                    AND tribal_eligibility.is_tribal_eligible = true
+                ORDER BY (
+                    grant_tags.total_score + COALESCE(tribal_eligibility.relevancy_score, 0)
+                ) DESC
+                """,
+                (tag_list_lower,),
+            )
+            raw = _rows_to_dicts(cursor)
+            opportunities = _aggregate_tagged_opportunities(raw)
+        elif q_raw:
+            pattern = f"%{q_raw}%"
+            cursor.execute(
+                f"""
+                SELECT
+                    grants.opportunity_id,
+                    grants.title,
+                    grants.description,
+                    grants.agency,
+                    grants.status,
+                    grants.posted_date,
+                    grants.estimated_funding,
+                    grants.grant_gov_url,
+                    COALESCE(tag_totals.total_score, 0) AS total_score,
+                    tribal_eligibility.relevancy_score
+                FROM grants
+                LEFT JOIN tribal_eligibility
+                    ON grants.opportunity_id = tribal_eligibility.opportunity_id
+                {_V2_TAG_TOTALS_JOIN}
+                WHERE (grants.title ILIKE %s OR grants.agency ILIKE %s)
+                    AND tribal_eligibility.is_tribal_eligible = true
+                    AND grants.status IN ('posted', 'forecasted')
+                {_V2_COMBINED_ORDER}
+                LIMIT 50
+                """,
+                (pattern, pattern),
+            )
+            opportunities = _rows_to_dicts(cursor)
+        else:
+            cursor.execute(
+                f"""
+                SELECT
+                    grants.opportunity_id,
+                    grants.title,
+                    grants.description,
+                    grants.agency,
+                    grants.status,
+                    grants.posted_date,
+                    grants.estimated_funding,
+                    grants.grant_gov_url,
+                    COALESCE(tag_totals.total_score, 0) AS total_score,
+                    tribal_eligibility.relevancy_score
+                FROM grants
+                LEFT JOIN tribal_eligibility
+                    ON grants.opportunity_id = tribal_eligibility.opportunity_id
+                {_V2_TAG_TOTALS_JOIN}
+                WHERE tribal_eligibility.is_tribal_eligible = true
+                    AND grants.status IN ('posted', 'forecasted')
+                {_V2_COMBINED_ORDER}
                 LIMIT 50
                 """
-        )
-        opportunities = _rows_to_dicts(cursor)
+            )
+            opportunities = _rows_to_dicts(cursor)
         return jsonify(opportunities)
     except Exception as e:
         return jsonify({"message": "Error getting opportunities: " + str(e)}), 500
