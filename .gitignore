@@ -31,3 +31,6 @@ Thumbs.db
 
 # CSV files
 *.csv
+
+# script
+scripts/add_group.py
