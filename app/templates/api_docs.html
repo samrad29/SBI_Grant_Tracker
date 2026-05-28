@@ -116,9 +116,56 @@
         <p>Database selection follows <code>get_db_connection(test_mode=is_test_mode())</code>: set <code>DATABASE_URL</code> for Postgres, or use local SQLite when unset. <code>TEST_MODE</code> controls test DB behavior when not using <code>DATABASE_URL</code>.</p>
         <p><strong>User activity routes</strong> read <code>session["user_id"]</code>. The client must establish a Flask session with that key before calling them; they do not take <code>user_id</code> as a query parameter.</p>
         <p>For mutating actions (bookmarks, checklist, project tasks), the handlers still use GET with query parameters.</p>
+        <p><strong>Sessions:</strong> Login and net-ID validation set a permanent signed cookie. Idle timeout defaults to <strong>40 minutes</strong> (<code>SESSION_LIFETIME_MINUTES</code> env); each request extends the window. Cross-origin SPAs should send <code>credentials: "include"</code> and may need <code>SESSION_CROSS_SITE_COOKIES=1</code> on the API host.</p>
     </div>
 
     <h2>Authentication (`auth.py`)</h2>
+
+    <p>Two flows share the same Flask session cookie:</p>
+    <ul>
+        <li><strong>Client portal login</strong> — <code>POST /api/auth/login</code> → <code>session["user_id"]</code>.</li>
+        <li><strong>Group registration</strong> — <code>GET /api/auth/validate_netID</code> → <code>session["group_id"]</code> and <code>session["group_name"]</code>, then <code>GET /api/auth/create_user</code> to add a user to that group.</li>
+    </ul>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/auth/validate_netID</code></div>
+        <p>Checks <code>groups.net_id</code>. On success, starts a permanent session with the group context (used before the create-user page).</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>netID</code> (required): group net ID from the <code>groups</code> table</li>
+        </ul>
+        <div class="section-title">Example response (200)</div>
+<pre>{
+  "message": "NetID validated successfully",
+  "group_name": "Example Tribe",
+  "group_id": "1"
+}</pre>
+        <p>400: <code>{ "message": "NetID required" }</code> · 404: <code>{ "message": "NetID not found" }</code></p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/auth/group_session</code></div>
+        <p>Returns the group name from the registration session (after net-ID validation). Use to gate the create-user UI.</p>
+        <div class="section-title">Example response (200)</div>
+<pre>{ "group_name": "Example Tribe" }</pre>
+        <p>401: <code>{ "message": "Not authenticated" }</code> (no <code>group_name</code> in session)</p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/auth/create_user</code></div>
+        <p>Creates a row in <code>users</code> for the group validated in the current session. Password is stored as a Werkzeug hash.</p>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>email</code> (required)</li>
+            <li><code>password</code> (required)</li>
+            <li><code>password_confirmation</code> (required; must match <code>password</code>)</li>
+        </ul>
+        <div class="section-title">Session</div>
+        <p>Requires <code>session["group_id"]</code> from <code>/api/auth/validate_netID</code>. Stored on the user as <code>users.group_id</code>.</p>
+        <div class="section-title">Example response (200)</div>
+<pre>{ "message": "User created successfully" }</pre>
+        <p>400: invalid email/password, passwords mismatch, or user already exists for that email and group · 401: group session missing</p>
+    </div>
 
     <div class="endpoint">
         <div class="path"><span class="method">POST</span><code>/api/auth/login</code></div>
@@ -135,15 +182,15 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/auth/session</code></div>
-        <p>Returns the current session user id.</p>
+        <p>Returns the current portal session user. <code>group_name</code> is included when present (registration flow); after login-only sessions it may be omitted.</p>
         <div class="section-title">Example response (200)</div>
-<pre>{ "user_id": "demo-user" }</pre>
+<pre>{ "user_id": "demo-user", "group_name": null }</pre>
         <p>401: <code>{ "message": "Not authenticated" }</code></p>
     </div>
 
     <div class="endpoint">
         <div class="path"><span class="method">POST</span><code>/api/auth/logout</code></div>
-        <p>Clears <code>session["user_id"]</code>.</p>
+        <p>Clears the entire session (user id, group id, group name, net-ID context).</p>
         <div class="section-title">Example response (200)</div>
 <pre>{ "message": "User logged out successfully" }</pre>
     </div>
@@ -173,10 +220,10 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/opportunities</code></div>
-        <p>Lists tribal-eligible, <strong>open</strong> opportunities (<code>status</code> in <code>posted</code>, <code>forecasted</code>). Supports tag search, text search, or a default list (up to 50 rows).</p>
+        <p>Legacy list endpoint: tribal-eligible, <strong>open</strong> opportunities (<code>status</code> in <code>posted</code>, <code>forecasted</code>). Prefer <code>/api/get_opportunities_v2</code> for relevancy-aware sorting (client portal uses v2).</p>
         <div class="section-title">Filters (all modes)</div>
         <ul>
-            <li>Inner join <code>tribal_eligibility</code> with <code>is_tribal_eligible = true</code>.</li>
+            <li>Requires <code>tribal_eligibility.is_tribal_eligible = true</code>.</li>
             <li><code>grants.status IN ('posted', 'forecasted')</code> — <code>closed</code> and <code>archived</code> grants are omitted.</li>
         </ul>
         <div class="section-title">Query params</div>
@@ -188,12 +235,17 @@
         <ul>
             <li>If <code>tags</code> is non-empty, tag mode is used (even if <code>q</code> is also present).</li>
             <li>Else if <code>q</code> is non-empty, search mode is used.</li>
-            <li>Else: default list (up to 50), ordered by database default.</li>
+            <li>Else: default list.</li>
+        </ul>
+        <div class="section-title">Sorting</div>
+        <ul>
+            <li><code>tags</code>: ordered by matching <code>grant_tags</code> <code>total_score</code> descending (no tribal relevancy fields in the response).</li>
+            <li>Default and <code>q</code>: includes <code>posted_date</code> (ISO <code>YYYY-MM-DD</code> when normalized). Results are sorted in Python by <strong>posted date, newest first</strong> (up to 50 rows), not by tribal relevancy.</li>
         </ul>
         <div class="section-title">Response shape</div>
         <ul>
-            <li>Default and <code>q</code>: includes <code>posted_date</code> (ISO <code>YYYY-MM-DD</code> after ingestion or backfill). Sorted by true calendar date (newest first), not alphabetical month names—legacy values like <code>September 15, 2024</code> are parsed in the API until you run <code>/api/db_migration/normalize_grant_dates</code>.</li>
-            <li><code>tags</code>: one object per opportunity (aggregated in Python), ordered by <code>total_score</code> descending. Includes the same grant fields plus <code>total_score</code> and <code>tag_scores</code> (array of <code>{ "tag", "tag_score" }</code>). Only tags with positive scores for that opportunity are included.</li>
+            <li>Default and <code>q</code>: <code>opportunity_id</code>, <code>title</code>, <code>description</code>, <code>agency</code>, <code>status</code>, <code>posted_date</code>, <code>estimated_funding</code>, <code>grant_gov_url</code>.</li>
+            <li><code>tags</code>: one object per opportunity (aggregated in Python) with <code>total_score</code> and <code>tag_scores</code> (array of <code>{ "tag", "tag_score" }</code>).</li>
         </ul>
         <div class="section-title">Example response (`tags=Housing,Energy`)</div>
 <pre>[
@@ -219,11 +271,68 @@
     "description": "Funding for local education initiatives.",
     "agency": "Department of Education",
     "status": "forecasted",
+    "posted_date": "2026-03-10",
     "estimated_funding": 250000.0,
     "grant_gov_url": null
   }
 ]</pre>
         <p>When <code>grant_gov_url</code> is null, hide or disable external “view on Grants.gov” actions unless you build a fallback from <code>number</code> yourself.</p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><code>/api/get_opportunities_v2</code></div>
+        <p>Primary list endpoint for the client portal. Same filters as <code>/api/opportunities</code>, with tribal scoring fields and relevancy-first sort order.</p>
+        <div class="section-title">Tribal scoring (`tribal_eligibility`)</div>
+        <ul>
+            <li><code>relevancy_score</code> — keyword/agency/eligibility content score (updated on new grants and when grant content changes during daily ingestion).</li>
+            <li><code>freshness_score</code> — 0–15 from <code>posted_date</code> age (recomputed daily for all rows with tribal eligibility).</li>
+            <li><strong>Rank used for sorting</strong> = <code>relevancy_score + freshness_score</code> (nulls treated as 0). The portal displays this sum in the “Tribal relevancy” column.</li>
+        </ul>
+        <div class="section-title">Query params</div>
+        <ul>
+            <li><code>tags</code> (optional): comma-separated tags (same matching as v1).</li>
+            <li><code>q</code> (optional): title/agency <code>ILIKE</code> search.</li>
+        </ul>
+        <div class="section-title">Precedence &amp; sorting</div>
+        <ul>
+            <li><code>tags</code> present → tag mode: sort by <code>sum(matching tag scores) + relevancy_score + freshness_score</code> descending. Response includes <code>total_score</code>, <code>tag_scores</code>, <code>relevancy_score</code>, <code>freshness_score</code>.</li>
+            <li><code>q</code> present (no tags) → up to <strong>50</strong> matches, sorted by tribal rank descending.</li>
+            <li>Neither → up to <strong>100</strong> rows from SQL, sorted by tribal rank descending (no secondary posted-date re-sort).</li>
+        </ul>
+        <div class="section-title">Example response (default)</div>
+<pre>[
+  {
+    "opportunity_id": "336489",
+    "title": "Tribal Housing Improvement Program",
+    "description": "…",
+    "agency": "HUD",
+    "status": "posted",
+    "posted_date": "2026-03-10",
+    "estimated_funding": 250000.0,
+    "grant_gov_url": "https://www.grants.gov/...",
+    "relevancy_score": 45.0,
+    "freshness_score": 15.0
+  }
+]</pre>
+        <div class="section-title">Example response (<code>tags=Housing,Energy</code>)</div>
+<pre>[
+  {
+    "opportunity_id": "336489",
+    "title": "Community Learning Grant",
+    "agency": "Department of Education",
+    "status": "posted",
+    "estimated_funding": 250000.0,
+    "grant_gov_url": "https://www.grants.gov/...",
+    "total_score": 18.0,
+    "relevancy_score": 30.0,
+    "freshness_score": 10.0,
+    "tag_scores": [
+      { "tag": "Housing", "tag_score": 10.0 },
+      { "tag": "Energy", "tag_score": 8.0 }
+    ]
+  }
+]</pre>
+        <p>Scores may be <code>null</code> until the daily pipeline or <code>/api/db_migration/add_relevancy_score</code> has populated them.</p>
     </div>
 
     <div class="note">
@@ -553,6 +662,19 @@
         <p>Backfills <code>grants.grant_gov_url</code> for every row using <code>compute_grant_public_url</code>: copies the funding description <code>link_url</code> when present; otherwise sets <code>grant_gov_url</code> to <code>null</code> (same as ingestion).</p>
         <div class="section-title">Response</div>
 <pre>{ "message": "grant_gov_url refreshed …", "rows_updated": 0 }</pre>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET / POST</span><code>/api/db_migration/add_relevancy_score</code></div>
+        <p>Idempotent schema tweak: adds <code>relevancy_score</code> and <code>freshness_score</code> on <code>tribal_eligibility</code> if missing. Backfills both columns for every grant joined to tribal eligibility. Safe to run once on an existing database before the daily job has populated scores.</p>
+        <div class="section-title">Response</div>
+<pre>{
+  "message": "Tribal scoring updated on existing tribal_eligibility rows",
+  "rows_scored": 0,
+  "rows_updated": 0,
+  "rows_skipped": 0,
+  "freshness_refreshed": 0
+}</pre>
     </div>
 
     <div class="endpoint">
