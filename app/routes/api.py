@@ -135,13 +135,10 @@ def get_opportunities():
     """
     List tribal-eligible opportunities with status posted or forecasted (open only).
 
-    Without ``tags`` or ``q``: up to 50 rows (opportunity_id, title, description, agency,
-    status, estimated_funding, grant_gov_url).
+    Without ``tags``: includes ``relevancy_score`` and ``freshness_score``; sorted by their sum.
 
-    With ``q``: title/agency ILIKE search; newest ``posted_date`` first (parsed, not string sort).
-
-    With ``tags`` (comma-separated): aggregated per opportunity, ordered by total_score
-    descending, with tag_scores for matching tags. Closed/archived grants are excluded.
+    With ``tags`` (comma-separated): aggregated per opportunity, ordered by tag ``total_score``
+    descending (no tribal score fields). Closed/archived grants are excluded.
     """
     try:
         conn = get_db_connection(test_mode=is_test_mode())
@@ -207,7 +204,7 @@ def get_opportunities():
                 """,
                 (pattern, pattern),
             )
-            opportunities = _sort_rows_by_posted_date(_rows_to_dicts(cursor))[:50]
+            opportunities = _rows_to_dicts(cursor)[:150]
         else:
             cursor = conn.cursor()
             cursor.execute(
@@ -230,7 +227,7 @@ def get_opportunities():
                 LIMIT 100
                 """
             )
-            opportunities = _sort_rows_by_posted_date(_rows_to_dicts(cursor))[:50]
+            opportunities = _rows_to_dicts(cursor)[:150]
         return jsonify(opportunities)
     except Exception as e:
         return jsonify({"message": "Error getting opportunities: " + str(e)}), 500

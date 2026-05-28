@@ -201,7 +201,7 @@
         <ul>
             <li><code>posted</code> / <code>forecasted</code> — active synopsis or forecast from ingestion.</li>
             <li><code>closed</code> — application deadline has passed. Set by the offline script <code>python -m scripts.check_past_deadlines</code> (Groq interprets deadline fields). Daily ingestion refreshes other columns but <strong>does not</strong> overwrite <code>closed</code> back to posted/forecasted for the same <code>opportunity_id</code>.</li>
-            <li><code>archived</code> — not seen on the Grants.gov search feed for several days (pipeline archive step). Excluded from <code>/api/opportunities</code> like <code>closed</code>.</li>
+            <li><code>archived</code> — not seen on the Grants.gov search feed for several days (pipeline archive step). Excluded from list endpoints like <code>closed</code>.</li>
         </ul>
         <p>Detail view <code>/api/opportunities/&lt;id&gt;</code> returns any row in <code>grants</code>, including <code>closed</code> or <code>archived</code>, if you still have the id.</p>
     </div>
@@ -220,7 +220,7 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/opportunities</code></div>
-        <p>Legacy list endpoint: tribal-eligible, <strong>open</strong> opportunities (<code>status</code> in <code>posted</code>, <code>forecasted</code>). Prefer <code>/api/get_opportunities_v2</code> for relevancy-aware sorting (client portal uses v2).</p>
+        <p>Lists tribal-eligible, <strong>open</strong> opportunities (<code>status</code> in <code>posted</code>, <code>forecasted</code>). Used by the grants dashboard. Response fields are stable; tribal scores are <strong>not</strong> included in JSON (use <code>/api/get_opportunities_v2</code> for score fields).</p>
         <div class="section-title">Filters (all modes)</div>
         <ul>
             <li>Requires <code>tribal_eligibility.is_tribal_eligible = true</code>.</li>
@@ -237,15 +237,20 @@
             <li>Else if <code>q</code> is non-empty, search mode is used.</li>
             <li>Else: default list.</li>
         </ul>
-        <div class="section-title">Sorting</div>
+        <div class="section-title">Sorting (order only — scores not returned)</div>
         <ul>
-            <li><code>tags</code>: ordered by matching <code>grant_tags</code> <code>total_score</code> descending (no tribal relevancy fields in the response).</li>
-            <li>Default and <code>q</code>: includes <code>posted_date</code> (ISO <code>YYYY-MM-DD</code> when normalized). Results are sorted in Python by <strong>posted date, newest first</strong> (up to 50 rows), not by tribal relevancy.</li>
+            <li><code>tags</code>: ordered by matching <code>grant_tags</code> <code>total_score</code> descending.</li>
+            <li>Default and <code>q</code>: ordered in SQL by <code>COALESCE(relevancy_score,0) + COALESCE(freshness_score,0)</code> descending (tribal rank from <code>tribal_eligibility</code>, not exposed in the payload).</li>
+        </ul>
+        <div class="section-title">Limits</div>
+        <ul>
+            <li>Default: up to <strong>100</strong> rows from SQL, then capped to <strong>150</strong> in the handler.</li>
+            <li><code>q</code>: no SQL <code>LIMIT</code>; handler returns at most <strong>150</strong> rows.</li>
         </ul>
         <div class="section-title">Response shape</div>
         <ul>
-            <li>Default and <code>q</code>: <code>opportunity_id</code>, <code>title</code>, <code>description</code>, <code>agency</code>, <code>status</code>, <code>posted_date</code>, <code>estimated_funding</code>, <code>grant_gov_url</code>.</li>
-            <li><code>tags</code>: one object per opportunity (aggregated in Python) with <code>total_score</code> and <code>tag_scores</code> (array of <code>{ "tag", "tag_score" }</code>).</li>
+            <li>Default and <code>q</code>: <code>opportunity_id</code>, <code>title</code>, <code>description</code>, <code>agency</code>, <code>status</code>, <code>posted_date</code>, <code>estimated_funding</code>, <code>grant_gov_url</code> — no <code>relevancy_score</code> or <code>freshness_score</code>.</li>
+            <li><code>tags</code>: one object per opportunity (aggregated in Python): <code>opportunity_id</code>, <code>title</code>, <code>agency</code>, <code>status</code>, <code>estimated_funding</code>, <code>grant_gov_url</code>, <code>total_score</code>, <code>tag_scores</code> (no <code>description</code> or tribal score fields).</li>
         </ul>
         <div class="section-title">Example response (`tags=Housing,Energy`)</div>
 <pre>[
@@ -281,7 +286,7 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/get_opportunities_v2</code></div>
-        <p>Primary list endpoint for the client portal. Same filters as <code>/api/opportunities</code>, with tribal scoring fields and relevancy-first sort order.</p>
+        <p>Client portal list endpoint. Same open/tribal-eligible filters as v1, but returns <code>relevancy_score</code> and <code>freshness_score</code> and uses them in tag-mode sorting as well.</p>
         <div class="section-title">Tribal scoring (`tribal_eligibility`)</div>
         <ul>
             <li><code>relevancy_score</code> — keyword/agency/eligibility content score (updated on new grants and when grant content changes during daily ingestion).</li>
