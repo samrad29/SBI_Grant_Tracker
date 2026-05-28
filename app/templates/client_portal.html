@@ -600,6 +600,14 @@ function formatScoreCell(value) {
     return String(value);
 }
 
+/** Content relevancy + freshness (matches API sort order). */
+function formatTribalRankCell(grant) {
+    const r = grant.relevancy_score;
+    const f = grant.freshness_score;
+    if (r == null && f == null) return "—";
+    return String((Number(r) || 0) + (Number(f) || 0));
+}
+
 /** Per-tag breakdown when API returns tag_scores (tag search). */
 function formatTagMatchBreakdown(grant) {
     const tags = grant.tag_scores;
@@ -888,7 +896,7 @@ async function loadGrantsTable() {
             const tagTotalHtml = tagSearch
                 ? formatTagTotalCell(grant, true)
                 : "—";
-            const tribalRel = formatScoreCell(grant.relevancy_score);
+            const tribalRel = formatTribalRankCell(grant);
             const isBm = bookmarkedOppIds.has(oid);
             const tr = document.createElement("tr");
             const bmBtn = document.createElement("button");

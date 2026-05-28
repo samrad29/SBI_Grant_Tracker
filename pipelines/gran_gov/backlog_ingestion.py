@@ -5,6 +5,7 @@ import time
 from pipelines.gran_gov.main import get_opportunity_ids
 from pipelines.gran_gov.ingestion_loop import upsert_grant_current, insert_snapshot
 from pipelines.gran_gov.ingestion_utils import fetch_opportunity, normalize_opportunity, update_tribal_eligibility, update_grant_tags
+from pipelines.gran_gov.relevancy import apply_content_relevancy
 from pipelines.gran_gov.init_tables import create_tables
 from pipelines.gran_gov.quick_classification import quick_classification
 from db.db_util import get_db_connection
@@ -97,6 +98,8 @@ def ingest_backlog(conn, test_mode: int = 0):
             else:
                 update_grant_tags(conn, opportunity_id, ai_result, -1) # job_id -1 means no job_id (for backlog ingestion)
                 print(f"AI tagging result: {ai_result}")
+
+            apply_content_relevancy(conn, normalized)
 
             if i % 50 == 0: 
                 conn.commit()

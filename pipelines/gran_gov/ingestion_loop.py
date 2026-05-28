@@ -15,6 +15,7 @@ import os
 from openai import OpenAI
 from pipelines.ai_utils.llm_clients import LLMService
 from pipelines.ai_utils.llm_clients import GroqProvider, OpenAIProvider
+from pipelines.gran_gov.relevancy import apply_content_relevancy, refresh_all_freshness_scores
 
 def canonical_json(obj: Any) -> str:
     # Sort keys + compact separators for stable hashing
@@ -243,7 +244,8 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                     if ai_result is not None:
                         update_grant_tags(conn, str(oid), ai_result, job_id)
                         log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
-
+                    if apply_content_relevancy(conn, normalized):
+                        log(conn, job_id, f"Relevancy score updated for new grant {oid}", "INFO")
 
                 if prev is not None:
                     old_hash = prev["hash"]
@@ -295,11 +297,20 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                     if ai_result is not None:
                         update_grant_tags(conn, str(oid), ai_result, job_id)
                         log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
+                    if apply_content_relevancy(conn, normalized):
+                        log(conn, job_id, f"Relevancy score updated for changed grant {oid}", "INFO")
                 i += 1
             except Exception as e:
                 log(conn, job_id, f"Error in daily ingestion for opportunity id: {oid}: {e}", "ERROR")
                 i += 1
                 continue
+        freshness_updated = refresh_all_freshness_scores(conn)
+        log(
+            conn,
+            job_id,
+            f"Refreshed freshness_score for {freshness_updated} tribal_eligibility rows.",
+            "INFO",
+        )
         log(conn, job_id, f"Ingestion completed with {ingestion_count} grants, {new_grants} new grants, {updated_grants} updated grants, {new_relevant_grants} new relevant grants, and {grants_with_alerts} grants with alerts.", "INFO")
         conn.commit()
         return {

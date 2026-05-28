@@ -10,7 +10,12 @@ from pipelines.gran_gov.ingestion_utils import (
     fetch_opportunity,
     normalize_grant_date,
 )
-from pipelines.gran_gov.relevancy import score_relevancy, save_relevancy_score
+from pipelines.gran_gov.relevancy import (
+    calculate_freshness_score,
+    refresh_all_freshness_scores,
+    save_tribal_scoring,
+    score_relevancy,
+)
 from pipelines.gran_gov.ingestion_utils import fetch_opportunity
 
 
@@ -160,10 +165,12 @@ def add_relevancy_score():
         conn = get_db_connection(test_mode=is_test_mode())
         cur = conn.cursor()
         cur.execute(
-                "ALTER TABLE tribal_eligibility ADD COLUMN IF NOT EXISTS "
-                "relevancy_score INTEGER"
-            )
-        print("Relevancy score column added")
+            "ALTER TABLE tribal_eligibility ADD COLUMN IF NOT EXISTS relevancy_score INTEGER"
+        )
+        cur.execute(
+            "ALTER TABLE tribal_eligibility ADD COLUMN IF NOT EXISTS freshness_score INTEGER"
+        )
+        print("Relevancy / freshness columns ensured")
         conn.commit()
         cur.execute(
             """
@@ -179,17 +186,25 @@ def add_relevancy_score():
         for row in rows:
             opportunity_id = row_get(row, "opportunity_id", 0)
             relevancy_score = score_relevancy(row)
-            if save_relevancy_score(conn, opportunity_id, relevancy_score):
+            freshness_score = calculate_freshness_score(row_get(row, "posted_date", 0))
+            if save_tribal_scoring(
+                conn,
+                opportunity_id,
+                relevancy_score=relevancy_score,
+                freshness_score=freshness_score,
+            ):
                 updated += 1
             else:
                 skipped += 1
+        freshness_refreshed = refresh_all_freshness_scores(conn)
         conn.commit()
         return jsonify(
             {
-                "message": "Relevancy scores updated on existing tribal_eligibility rows",
+                "message": "Tribal scoring updated on existing tribal_eligibility rows",
                 "rows_scored": len(rows),
                 "rows_updated": updated,
                 "rows_skipped": skipped,
+                "freshness_refreshed": freshness_refreshed,
             }
         ), 200
     except Exception as e:
