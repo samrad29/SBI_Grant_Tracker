@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.auth_util import sanitize_email, sanitize_password
-from db.db_util import get_db_connection, is_test_mode
+from db.db_util import get_db_connection, is_test_mode, scalar_from_row
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -54,6 +54,9 @@ def create_user():
     try:
         email = request.args.get("email")
         group_id = session.get("group_id")
+        user_name = request.args.get("user_name")
+        if not user_name:
+            return jsonify({"message": "Name required"}), 400
         if not group_id:
             return jsonify({"message": "Group ID not validated, session invalid"}), 401
         password = request.args.get("password")
@@ -69,12 +72,26 @@ def create_user():
         password_hash = generate_password_hash(password)
         conn = get_db_connection(test_mode=is_test_mode())
         cursor = conn.cursor()
+        id = 0
+        cursor.execute("SELECT MAX(id) FROM users")
+        max_id = scalar_from_row(cursor.fetchone())
+        if max_id is None or max_id == "":
+            id = 1
+        else:
+            id = max_id + 1
+        role = "default"
         cursor.execute("SELECT user_id FROM users WHERE user_email = %s AND group_id = %s LIMIT 1", (email, group_id))
         user = cursor.fetchone()
         if user:
             return jsonify({"message": "User already exists"}), 400
         else:
-            cursor.execute("INSERT INTO users (user_email, user_password, group_id) VALUES (%s, %s, %s)", (email, password_hash, group_id))
+            cursor.execute("""
+                INSERT INTO users (
+                    id, user_email, user_password, group_id, role, user_name) 
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (id, email, password_hash, group_id, role, user_name)
+            )
             conn.commit()
         return jsonify({"message": "User created successfully"}), 200
     except Exception as e:
