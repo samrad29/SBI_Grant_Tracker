@@ -183,11 +183,12 @@ def get_opportunities():
                     grants.estimated_funding, 
                     grants.grant_gov_url
                 FROM grants
-                left join tribal_eligibility 
-                on grants.opportunity_id = tribal_eligibility.opportunity_id
-                WHERE grants.title ILIKE %s OR grants.agency ILIKE %s
-                    and tribal_eligibility.is_tribal_eligible = true
-                    and grants.status in ('posted', 'forecasted')
+                LEFT JOIN tribal_eligibility
+                    ON grants.opportunity_id = tribal_eligibility.opportunity_id
+                WHERE (grants.title ILIKE %s OR grants.agency ILIKE %s)
+                    AND tribal_eligibility.is_tribal_eligible = true
+                    AND grants.status IN ('posted', 'forecasted')
+                ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
                 """,
                 (pattern, pattern),
             )
@@ -206,10 +207,12 @@ def get_opportunities():
                     grants.estimated_funding, 
                     grants.grant_gov_url 
                 FROM grants 
-                left join tribal_eligibility 
-                on grants.opportunity_id = tribal_eligibility.opportunity_id 
-                WHERE tribal_eligibility.is_tribal_eligible = true 
-                and grants.status in ('posted', 'forecasted')
+                LEFT JOIN tribal_eligibility
+                    ON grants.opportunity_id = tribal_eligibility.opportunity_id
+                WHERE tribal_eligibility.is_tribal_eligible = true
+                    AND grants.status IN ('posted', 'forecasted')
+                ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
+                LIMIT 100
                 """
             )
             opportunities = _sort_rows_by_posted_date(_rows_to_dicts(cursor))[:50]
@@ -318,7 +321,7 @@ def get_opportunities_v2():
                 WHERE tribal_eligibility.is_tribal_eligible = true
                     AND grants.status IN ('posted', 'forecasted')
                 ORDER BY tribal_eligibility.relevancy_score DESC NULLS LAST
-                LIMIT 50
+                LIMIT 100
                 """
             )
             opportunities = _rows_to_dicts(cursor)
