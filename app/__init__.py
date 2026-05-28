@@ -2,6 +2,7 @@
 Initializes the Flask application and registers the blueprints.
 """
 import os
+from datetime import timedelta
 
 from flask import Flask
 
@@ -18,9 +19,23 @@ def _env_bool(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _session_lifetime() -> timedelta:
+    """Idle/session lifetime for signed cookies (default 37 minutes)."""
+    raw = (os.getenv("SESSION_LIFETIME_MINUTES") or "40").strip()
+    try:
+        minutes = int(raw)
+    except ValueError:
+        minutes = 37
+    return timedelta(minutes=max(1, min(minutes, 24 * 60)))
+
+
 def create_app():
     app = Flask(__name__)
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+
+    # Signed cookie sessions expire after inactivity (see auth login: session.permanent = True).
+    app.config["PERMANENT_SESSION_LIFETIME"] = _session_lifetime()
+    app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 
     # Session cookie (Flask signed cookie). Defaults: SameSite=Lax, Secure=False — fine for
     # same-origin (e.g. API + templates on one host). For a separate-site frontend (Vercel)

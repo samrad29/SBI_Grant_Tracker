@@ -14,7 +14,7 @@ With the web app running (`python run.py` or `python -m scripts.run_web`), open 
 
 TODO: ADD A RECENTLY DELETED THING
 
-**Sessions (login / client portal):** Set **`SECRET_KEY`** in production so Flask can sign session cookies. `POST /api/auth/login` with JSON `{"email","password"}` checks `users.user_email` / `users.user_password` (Werkzeug hash) and stores **`user_id` in the server session**; the browser keeps a session cookie. User-activity routes read `session["user_id"]`—do not pass `user_id` in the query string. **`/portal`** uses this flow. To create a test user, insert into `users` with `user_password` from `werkzeug.security.generate_password_hash(...)`.
+**Sessions (login / client portal):** Set **`SECRET_KEY`** in production so Flask can sign session cookies. `POST /api/auth/login` sets a **permanent** session cookie that expires after **`SESSION_LIFETIME_MINUTES`** of inactivity (default **37**; set to `30` or `45` as needed). User-activity routes read `session["user_id"]`—do not pass `user_id` in the query string. **`/portal`** uses this flow. Seed a test user with `python -m scripts.seed_demo_user`.
 
 - **`pipelines/`**  
   Data ingestion pipelines. See [`pipelines/README.MD`](pipelines/README.MD).  

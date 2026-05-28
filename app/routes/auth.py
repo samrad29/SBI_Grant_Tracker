@@ -36,6 +36,7 @@ def login():
         )
         user = cursor.fetchone()
         if user and check_password_hash(user["user_password"], password):
+            session.permanent = True
             session["user_id"] = user["user_id"]
             return jsonify(
                 {"message": "User logged in successfully", "user_id": user["user_id"]}
@@ -54,7 +55,7 @@ def logout():
     Clear the session cookie (drops ``user_id``).
     """
     try:
-        session.pop("user_id", None)
+        session.clear()
         return jsonify({"message": "User logged out successfully"}), 200
     except Exception as e:
         return jsonify({"message": "Error logging out: " + str(e)}), 500
