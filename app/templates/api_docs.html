@@ -153,18 +153,23 @@
 
     <div class="endpoint">
         <div class="path"><span class="method">GET</span><code>/api/auth/create_user</code></div>
-        <p>Creates a row in <code>users</code> for the group validated in the current session. Password is stored as a Werkzeug hash.</p>
+        <p>Creates a row in <code>users</code> for the group validated in the current session. Password is stored as a Werkzeug hash. <code>role</code> is set to <code>default</code> on insert; the next numeric <code>id</code> is assigned from <code>MAX(id) + 1</code> on the <code>users</code> table.</p>
         <div class="section-title">Query params</div>
         <ul>
+            <li><code>user_name</code> (required): display name stored in <code>users.user_name</code></li>
             <li><code>email</code> (required)</li>
             <li><code>password</code> (required)</li>
             <li><code>password_confirmation</code> (required; must match <code>password</code>)</li>
         </ul>
         <div class="section-title">Session</div>
-        <p>Requires <code>session["group_id"]</code> from <code>/api/auth/validate_netID</code>. Stored on the user as <code>users.group_id</code>.</p>
+        <p>Requires <code>session["group_id"]</code> from <code>/api/auth/validate_netID</code>. Stored on the new user as <code>users.group_id</code>.</p>
+        <div class="section-title">Duplicate check</div>
+        <p>Rejects if a user already exists with the same <code>user_email</code> and <code>group_id</code>.</p>
         <div class="section-title">Example response (200)</div>
 <pre>{ "message": "User created successfully" }</pre>
-        <p>400: invalid email/password, passwords mismatch, or user already exists for that email and group · 401: group session missing</p>
+        <p>400: <code>Name required</code> · <code>Email and password required</code> · <code>Passwords do not match</code> · <code>Invalid email</code> · <code>Invalid password</code> · <code>User already exists</code></p>
+        <p>401: <code>{ "message": "Group ID not validated, session invalid" }</code></p>
+        <p>500: <code>{ "message": "Error creating user: …" }</code></p>
     </div>
 
     <div class="endpoint">
