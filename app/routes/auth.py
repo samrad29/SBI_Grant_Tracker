@@ -87,10 +87,10 @@ def create_user():
         else:
             cursor.execute("""
                 INSERT INTO users (
-                    id, user_email, user_password, group_id, role, user_name) 
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    id, user_id, user_email, user_password, group_id, role, user_name) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (id, email, password_hash, group_id, role, user_name)
+                (id, id, email, password_hash, group_id, role, user_name)
             )
             conn.commit()
         return jsonify({"message": "User created successfully"}), 200
