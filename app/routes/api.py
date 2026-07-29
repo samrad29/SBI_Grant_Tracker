@@ -129,6 +129,16 @@ def _aggregate_tagged_opportunities(rows: list[dict]) -> list[dict]:
     )
     return out
 
+def _get_search_results(conn, q_raw):
+    """
+    Get search results from the database (grants table)
+    Returns:
+        list of search results
+    """
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM grants WHERE title ILIKE %s OR agency ILIKE %s OR description ILIKE %s", (q_raw, q_raw, q_raw))
+    return _rows_to_dicts(cursor)
+
 
 @api_bp.route("/api/opportunities")
 def get_opportunities():
@@ -139,6 +149,8 @@ def get_opportunities():
 
     With ``tags`` (comma-separated): aggregated per opportunity, ordered by tag ``total_score``
     descending (no tribal score fields). Closed/archived grants are excluded.
+
+    If a search query is provided, it will return the top 150 results. Search is case-insensitive and will return results that contain the search query in the title or agency.
     """
     try:
         conn = get_db_connection(test_mode=is_test_mode())

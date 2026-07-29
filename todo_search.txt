@@ -1,0 +1,27 @@
+Pre-Work
+    p1. Create a grants_ai table that has structured json with extracted data about each grant in a standard format
+    p2. grants_ai should also have an embedding_document field and embedding field. embedding_document will show what was embedded
+
+1. Create an embedding vector for all grants in the data base
+    - Need to put grants into a standard format (we already have the normalized data set)
+    - Could be good to put AI generated projects or outcomes in the format?
+
+2. Adjust ingestion job to embed new grants as well
+
+3. Create embedding function to embed user queries
+
+4. Create function to return search results by comparing user query embedding to stored grant embeddings
+
+5. Create an embedding score and string search based score
+    - probably use the tribal relevancy/freshness scores as well
+
+
+~~~ Evaluating Search Function ~~~
+I. Compare first 5 to second 5 and first 10 to second 10
+    * At first just do this manually...
+    * Something we can definitely use AI for at some point
+
+--- Potential Future Improvements ---- 
+A. Have seperate embedding for desired outcomes - would enable users to search for grants that meet a desired outcome
+B. Funding Amount Filters
+C. Maybe show like a "top 150 grants"? with the option to view all grants?
