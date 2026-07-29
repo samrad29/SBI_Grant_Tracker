@@ -25,3 +25,19 @@ I. Compare first 5 to second 5 and first 10 to second 10
 A. Have seperate embedding for desired outcomes - would enable users to search for grants that meet a desired outcome
 B. Funding Amount Filters
 C. Maybe show like a "top 150 grants"? with the option to view all grants?
+D. Improved prompting (break into seperate prompts? or be more descriptive about what I need)
+E. A better model?
+
+
+Plan to implement:
+1. Create required python functions and SQL scripts
+    a. Function to extract required information from the grants.gov api response
+    b. Function to save the extracted information to the DB and create the embedding document
+    c. A function to create the required table in the DB (grants_ai)
+    d. A function to perform the embeddings
+    e. A new script/function to create a row in grants_ai table and embedding for all previously ingested grants
+        - This script should also initialize the grants_ai table
+    f. A function to embedd user queries upon receipt from frontend and compare to the grant embeddings, return most similar grants
+    g. Adjust function of previous daily ingestion to create embedding document for new grants (and update the embedding document for altered grants)
+
+2. Run backlog ingestion
