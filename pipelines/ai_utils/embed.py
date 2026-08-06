@@ -1,17 +1,16 @@
 """
 Grant embedding utilities for grants_ai.
 
-Reusable from scripts.extract_embed and the daily ingestion job.
+Reusable from scripts.extract_embed, the daily ingestion job, and the API.
 
 Env:
   OPENAI_API_KEY (required)
-  OPENAI_EMBEDDING_MODEL (optional, default text-embedding-3-small)
+  EMBEDDING_MODEL (optional, default text-embedding-3-small)
 """
 from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from typing import Any
 
 from dotenv import load_dotenv
@@ -24,14 +23,13 @@ load_dotenv()
 EMBEDDING_DIM = 1536
 DEFAULT_EMBED_API_BATCH_SIZE = 64
 DEFAULT_EMBED_CHUNK_SIZE = 500
+DEFAULT_SEMANTIC_SEARCH_LIMIT = 50
+MAX_SEMANTIC_SEARCH_LIMIT = 150
+OPEN_TRIBAL_STATUSES = ("posted", "forecasted")
 
 
 def get_embedding_model_name() -> str:
     return os.getenv("EMBEDDING_MODEL") or "text-embedding-3-small"
-
-
-def _placeholders(conn: Any) -> str:
-    return "?" if isinstance(conn, sqlite3.Connection) else "%s"
 
 
 def _as_string_list(value: Any) -> list[str]:
@@ -148,10 +146,8 @@ def embed_texts(
     return out
 
 
-def vector_to_db_value(conn: Any, vector: list[float]) -> Any:
-    """Format a vector for the current database backend."""
-    if isinstance(conn, sqlite3.Connection):
-        return json.dumps(vector)
+def vector_to_db_value(vector: list[float]) -> str:
+    """Format a vector literal for Postgres pgvector."""
     return "[" + ",".join(f"{float(x):.8g}" for x in vector) + "]"
 
 
@@ -164,8 +160,7 @@ def fetch_grants_ai_by_opportunity_ids(
     if not ids:
         return []
 
-    ph = _placeholders(conn)
-    in_ph = ", ".join([ph] * len(ids))
+    in_ph = ", ".join(["%s"] * len(ids))
     sql = f"""
         SELECT
             ga.opportunity_id,
@@ -212,8 +207,7 @@ def fetch_grants_ai_pending_embedding(
     limit: int | None = None,
 ) -> list[dict]:
     """Rows in grants_ai that still need an embedding."""
-    ph = _placeholders(conn)
-    sql = f"""
+    sql = """
         SELECT
             ga.opportunity_id,
             ga.purpose,
@@ -287,27 +281,15 @@ def save_grant_embedding(
 ) -> bool:
     """Persist embedding_document, embedding vector, and model name."""
     model = model or get_embedding_model_name()
-    ph = _placeholders(conn)
-    vector_value = vector_to_db_value(conn, embedding)
-
-    if isinstance(conn, sqlite3.Connection):
-        sql = f"""
-            UPDATE grants_ai
-            SET embedding_document = {ph},
-                embedding = {ph},
-                model = {ph}
-            WHERE opportunity_id = {ph}
-        """
-        params = (embedding_document, vector_value, model, opportunity_id)
-    else:
-        sql = f"""
-            UPDATE grants_ai
-            SET embedding_document = {ph},
-                embedding = {ph}::vector,
-                model = {ph}
-            WHERE opportunity_id = {ph}
-        """
-        params = (embedding_document, vector_value, model, opportunity_id)
+    vector_value = vector_to_db_value(embedding)
+    sql = """
+        UPDATE grants_ai
+        SET embedding_document = %s,
+            embedding = %s::vector,
+            model = %s
+        WHERE opportunity_id = %s
+    """
+    params = (embedding_document, vector_value, model, opportunity_id)
 
     cur = conn.cursor()
     try:
@@ -379,3 +361,93 @@ def embed_grants_ai_rows(
 
     skipped = len(rows) - len(opportunity_ids)
     return saved, failed + skipped
+
+
+def embed_query(text: str, *, model: str | None = None) -> list[float]:
+    """Embed a single user search query."""
+    query = (text or "").strip()
+    if not query:
+        raise ValueError("Query must be a non-empty string.")
+    vectors = embed_texts([query], model=model)
+    return vectors[0]
+
+
+def _search_row_dict(row: Any) -> dict:
+    if isinstance(row, dict):
+        return {
+            "opportunity_id": row.get("opportunity_id"),
+            "title": row.get("title"),
+            "description": row.get("description"),
+            "agency": row.get("agency"),
+            "status": row.get("status"),
+            "posted_date": row.get("posted_date"),
+            "estimated_funding": row.get("estimated_funding"),
+            "grant_gov_url": row.get("grant_gov_url"),
+            "purpose": row.get("purpose"),
+            "relevancy_score": row.get("relevancy_score"),
+            "freshness_score": row.get("freshness_score"),
+            "similarity_score": row.get("similarity_score"),
+        }
+    return {
+        "opportunity_id": row_get(row, "opportunity_id", 0),
+        "title": row_get(row, "title", 1),
+        "description": row_get(row, "description", 2),
+        "agency": row_get(row, "agency", 3),
+        "status": row_get(row, "status", 4),
+        "posted_date": row_get(row, "posted_date", 5),
+        "estimated_funding": row_get(row, "estimated_funding", 6),
+        "grant_gov_url": row_get(row, "grant_gov_url", 7),
+        "purpose": row_get(row, "purpose", 8),
+        "relevancy_score": row_get(row, "relevancy_score", 9),
+        "freshness_score": row_get(row, "freshness_score", 10),
+        "similarity_score": row_get(row, "similarity_score", 11),
+    }
+
+
+def search_tribal_grants_semantic(
+    conn: Any,
+    query: str,
+    *,
+    limit: int = DEFAULT_SEMANTIC_SEARCH_LIMIT,
+    statuses: tuple[str, ...] = OPEN_TRIBAL_STATUSES,
+) -> list[dict]:
+    """
+    Embed a user query and return tribally eligible grants ranked by cosine similarity.
+
+    Only includes open grants (posted/forecasted by default) with a stored embedding.
+    """
+    query = (query or "").strip()
+    if not query:
+        raise ValueError("Query must be a non-empty string.")
+
+    limit = max(1, min(int(limit), MAX_SEMANTIC_SEARCH_LIMIT))
+    query_vector = embed_query(query)
+    vector_literal = vector_to_db_value(query_vector)
+    status_ph = ", ".join(["%s"] * len(statuses))
+    sql = f"""
+        SELECT
+            g.opportunity_id,
+            g.title,
+            g.description,
+            g.agency,
+            g.status,
+            g.posted_date,
+            g.estimated_funding,
+            g.grant_gov_url,
+            ga.purpose,
+            te.relevancy_score,
+            te.freshness_score,
+            1 - (ga.embedding <=> %s::vector) AS similarity_score
+        FROM grants_ai ga
+        INNER JOIN grants g ON g.opportunity_id = ga.opportunity_id
+        INNER JOIN tribal_eligibility te ON te.opportunity_id = g.opportunity_id
+        WHERE ga.embedding IS NOT NULL
+          AND te.is_tribal_eligible = TRUE
+          AND g.status IN ({status_ph})
+        ORDER BY ga.embedding <=> %s::vector ASC
+        LIMIT %s
+    """
+    params: tuple[Any, ...] = (vector_literal, *statuses, vector_literal, int(limit))
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    return [_search_row_dict(row) for row in cur.fetchall()]

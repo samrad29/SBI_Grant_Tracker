@@ -1,7 +1,7 @@
 """
 Enable the pgvector extension on Postgres (one-time setup).
 
-Uses DATABASE_URL from .env — same as the rest of the app. Safe to re-run.
+Uses DATABASE_URL from .env. Safe to re-run.
 
 Usage (from repo root, venv active):
 
@@ -14,7 +14,7 @@ Then create grants_ai and run extraction:
 
 from __future__ import annotations
 
-import sqlite3
+import os
 import sys
 
 from db.db_util import get_db_connection, row_get
@@ -22,12 +22,12 @@ from pipelines.gran_gov.init_tables import ensure_pgvector_extension
 
 
 def main() -> int:
+    if not (os.getenv("DATABASE_URL") or "").strip():
+        print("DATABASE_URL is required for pgvector setup.", file=sys.stderr)
+        return 1
+
     conn = get_db_connection()
     try:
-        if isinstance(conn, sqlite3.Connection):
-            print("SQLite detected — pgvector is not required.")
-            return 0
-
         print("Enabling pgvector (CREATE EXTENSION IF NOT EXISTS vector)...")
         ensure_pgvector_extension(conn)
         conn.commit()

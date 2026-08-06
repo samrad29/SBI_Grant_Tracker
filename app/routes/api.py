@@ -1,10 +1,16 @@
 """
 API Routes used for data retrieval
 """
+import os
+
 from flask import Blueprint, jsonify
 from flask import request
 from db.db_util import get_db_connection, is_test_mode
 from pipelines.gran_gov.ingestion_utils import normalize_grant_date
+from pipelines.ai_utils.embed import (
+    MAX_SEMANTIC_SEARCH_LIMIT,
+    search_tribal_grants_semantic,
+)
 
 api_bp = Blueprint("api", __name__)
 
@@ -50,6 +56,35 @@ def _as_float(x):
         return float(x)
     except (TypeError, ValueError):
         return None
+
+
+def _semantic_search_query_from_request() -> str:
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        return (payload.get("q") or payload.get("query") or "").strip()
+    return (request.args.get("q") or request.args.get("query") or "").strip()
+
+
+def _format_semantic_search_results(rows: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for row in rows:
+        out.append(
+            {
+                "opportunity_id": row.get("opportunity_id"),
+                "title": row.get("title"),
+                "description": row.get("description"),
+                "agency": row.get("agency"),
+                "status": row.get("status"),
+                "posted_date": row.get("posted_date"),
+                "estimated_funding": row.get("estimated_funding"),
+                "grant_gov_url": row.get("grant_gov_url"),
+                "purpose": row.get("purpose"),
+                "relevancy_score": _as_float(row.get("relevancy_score")),
+                "freshness_score": _as_float(row.get("freshness_score")),
+                "similarity_score": round(_as_float(row.get("similarity_score")) or 0.0, 6),
+            }
+        )
+    return out
 
 
 def _tribal_rank_sql(alias: str = "tribal_eligibility") -> str:
@@ -358,6 +393,48 @@ def get_opportunities_v2():
         return jsonify({"message": "Error getting opportunities: " + str(e)}), 500
     finally:
         conn.close()
+
+
+@api_bp.route("/api/opportunities/semantic-search", methods=["GET", "POST"])
+def semantic_search_opportunities():
+    """
+    Semantic search over tribally eligible grants using grants_ai embeddings.
+
+    Query params (GET) or JSON body (POST):
+      - q or query: natural-language search string (required)
+      - limit: max results (default 50, max 150)
+
+    Only returns grants where tribal_eligibility.is_tribal_eligible = true,
+    status is posted/forecasted, and a grants_ai embedding exists.
+    Results are ordered by cosine similarity to the query embedding.
+    """
+    q_raw = _semantic_search_query_from_request()
+    if not q_raw:
+        return jsonify({"message": "Query parameter 'q' is required."}), 400
+
+    try:
+        payload = request.get_json(silent=True) or {} if request.method == "POST" else {}
+        limit = int(request.args.get("limit") or payload.get("limit") or 50)
+    except (TypeError, ValueError):
+        return jsonify({"message": "Invalid limit."}), 400
+    limit = max(1, min(limit, MAX_SEMANTIC_SEARCH_LIMIT))
+
+    if not (os.getenv("DATABASE_URL") or "").strip():
+        return jsonify(
+            {"message": "Semantic search requires Postgres (DATABASE_URL)."}
+        ), 503
+
+    try:
+        conn = get_db_connection(test_mode=is_test_mode())
+        try:
+            results = search_tribal_grants_semantic(conn, q_raw, limit=limit)
+        finally:
+            conn.close()
+        return jsonify(_format_semantic_search_results(results))
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"message": "Error running semantic search: " + str(e)}), 500
 
 
 @api_bp.route("/api/opportunities/total_funding")

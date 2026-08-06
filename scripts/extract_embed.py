@@ -21,9 +21,8 @@ Usage (from repo root):
   # One-time: enable pgvector on Render Postgres (uses DATABASE_URL from .env)
   python -m scripts.enable_pgvector
 
-Requires OPENAI_API_KEY.
-Uses DATABASE_URL when set, otherwise local SQLite (grants.db).
-Postgres: pgvector must be enabled once (see scripts.enable_pgvector).
+Requires OPENAI_API_KEY and DATABASE_URL (Postgres with pgvector).
+Postgres: enable pgvector once with scripts.enable_pgvector.
 """
 
 from __future__ import annotations

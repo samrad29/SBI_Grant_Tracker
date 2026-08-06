@@ -467,6 +467,10 @@
         <h2>Search grants</h2>
         <form class="search-form" id="search-form" action="#" method="get">
             <div class="field">
+                <label for="semantic-search">Semantic search</label>
+                <input type="search" id="semantic-search" placeholder="e.g. broadband for rural tribal communities" autocomplete="off">
+            </div>
+            <div class="field">
                 <label for="tag-search">Tags</label>
                 <input type="search" id="tag-search" placeholder="e.g. education housing" autocomplete="off">
             </div>
@@ -479,15 +483,15 @@
                 <button type="submit" class="primary" id="search-btn">Search</button>
             </div>
         </form>
-        <p class="hint">Uses <code>/api/get_opportunities_v2</code>. Default and title/agency search sort by <strong>tribal relevancy</strong> only. When you enter <strong>tags</strong>, results sort by sum of those tag scores + tribal relevancy, and <strong>Tag total</strong> shows the matching tag breakdown.</p>
+        <p class="hint">Priority: <strong>semantic</strong> (if filled) → <code>/api/opportunities/semantic-search</code> by embedding similarity; else <strong>tags</strong> or <strong>title/agency</strong> via <code>/api/get_opportunities_v2</code>. All results are tribal-eligible open grants.</p>
         <div id="results-wrap">
             <table>
                 <thead>
-                    <tr>
+                    <tr id="results-header-row">
                         <th>Title</th>
                         <th>Agency</th>
                         <th>Status</th>
-                        <th>Tag total</th>
+                        <th id="col-score-label">Tag total</th>
                         <th>Tribal relevancy</th>
                         <th>Bookmark</th>
                     </tr>
@@ -606,6 +610,24 @@ function formatTribalRankCell(grant) {
     const f = grant.freshness_score;
     if (r == null && f == null) return "—";
     return String((Number(r) || 0) + (Number(f) || 0));
+}
+
+function formatSimilarityCell(grant) {
+    const s = grant.similarity_score;
+    if (s == null || s === "") return "—";
+    const n = Number(s);
+    if (Number.isNaN(n)) return String(s);
+    return n.toFixed(4);
+}
+
+function setResultsTableMode(mode) {
+    const label = document.getElementById("col-score-label");
+    if (!label) return;
+    if (mode === "semantic") {
+        label.textContent = "Similarity";
+    } else {
+        label.textContent = "Tag total";
+    }
 }
 
 /** Per-tag breakdown when API returns tag_scores (tag search). */
@@ -866,20 +888,35 @@ async function loadGrantsTable() {
     const btn = document.getElementById("search-btn");
     const tagParam = searchTextToTagsParam(document.getElementById("tag-search").value);
     const qVal = document.getElementById("text-search").value.trim();
-    const tagSearch = Boolean(tagParam);
+    const semanticVal = document.getElementById("semantic-search").value.trim();
+    const tagSearch = Boolean(tagParam) && !semanticVal;
+    const semanticSearch = Boolean(semanticVal);
     const colCount = 6;
+    setResultsTableMode(semanticSearch ? "semantic" : "keyword");
     tbody.innerHTML = "";
     btn.disabled = true;
     try {
         await fetchBookmarkedIds();
-        let url = "/api/get_opportunities_v2";
-        if (tagParam) {
-            url += "?tags=" + encodeURIComponent(tagParam);
-        } else if (qVal) {
-            url += "?q=" + encodeURIComponent(qVal);
+        let url;
+        if (semanticSearch) {
+            url = "/api/opportunities/semantic-search?q=" + encodeURIComponent(semanticVal);
+        } else {
+            url = "/api/get_opportunities_v2";
+            if (tagParam) {
+                url += "?tags=" + encodeURIComponent(tagParam);
+            } else if (qVal) {
+                url += "?q=" + encodeURIComponent(qVal);
+            }
         }
         const res = await fetch(url, fetchOpts);
-        if (!res.ok) throw new Error(String(res.status));
+        if (!res.ok) {
+            let msg = "Failed to load grants.";
+            try {
+                const err = await res.json();
+                if (err && err.message) msg = err.message;
+            } catch (_) {}
+            throw new Error(msg);
+        }
         const data = await res.json();
         grantsById = new Map();
         if (!data.length) {
@@ -893,9 +930,9 @@ async function loadGrantsTable() {
             const title = grant.title != null ? String(grant.title) : "(no title)";
             const agency = grant.agency != null ? String(grant.agency) : "—";
             const status = grant.status != null ? String(grant.status) : "—";
-            const tagTotalHtml = tagSearch
-                ? formatTagTotalCell(grant, true)
-                : "—";
+            const scoreCell = semanticSearch
+                ? escapeHtml(formatSimilarityCell(grant))
+                : (tagSearch ? formatTagTotalCell(grant, true) : "—");
             const tribalRel = formatTribalRankCell(grant);
             const isBm = bookmarkedOppIds.has(oid);
             const tr = document.createElement("tr");
@@ -916,7 +953,7 @@ async function loadGrantsTable() {
                 "</td><td>" +
                 escapeHtml(status) +
                 "</td><td class='mono'>" +
-                tagTotalHtml +
+                scoreCell +
                 "</td><td class='mono'>" +
                 escapeHtml(tribalRel) +
                 "</td>";
@@ -924,8 +961,9 @@ async function loadGrantsTable() {
             tbody.appendChild(tr);
         });
     } catch (err) {
+        const msg = err && err.message ? String(err.message) : "Failed to load grants.";
         tbody.innerHTML =
-            "<tr><td colspan='" + colCount + "' class='error'>Failed to load grants.</td></tr>";
+            "<tr><td colspan='" + colCount + "' class='error'>" + escapeHtml(msg) + "</td></tr>";
         console.error(err);
     } finally {
         btn.disabled = false;
