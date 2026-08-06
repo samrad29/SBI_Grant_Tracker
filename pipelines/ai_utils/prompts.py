@@ -251,3 +251,141 @@ def ai_classify_deadline_passed(
         print(result.content)
         print("Error parsing JSON in ai_classify_deadline_passed:", e)
         return None
+
+def _grant_eligibility_text(grant: dict) -> str:
+    elig = (grant.get("eligibility_description") or "").strip()
+    if elig:
+        return elig
+    raw = grant.get("eligibilities")
+    if raw and str(raw).strip():
+        return str(raw).strip()
+    return "(none)"
+
+
+def extract_grants_ai_required_fields(grant: dict, llm_service: LLMService) -> dict | None:
+    """
+    Extract the required fields from the grant to be used in the grants_ai table.
+    Returns parsed JSON dict or None on failure.
+    """
+    title = (grant.get("title") or "").strip() or "(none)"
+    agency = (grant.get("agency") or "").strip() or "(none)"
+    description = (grant.get("description") or "").strip() or "(none)"
+    eligibility = _grant_eligibility_text(grant)
+
+    system_content = (
+        "You are an expert grant analyst specializing in U.S. federal grant opportunities.\n"
+        "Your job is to transform raw grant data into a structured, normalized representation that will later be used for:\n"
+        "- semantic search\n"
+        "- AI recommendations\n"
+        "- grant summaries\n"
+        "- retrieval evaluation\n\n"
+        "Do NOT invent information.\n"
+        "If information is not supported by the grant, return an empty array or null.\n"
+        "Prefer concise, factual language.\n"
+        "Return ONLY valid JSON."
+    )
+    user_content = (
+        "Below is a grant opportunity from Grants.gov.\n"
+        "Normalize this grant into the requested JSON format.\n\n"
+        "Return JSON with exactly these keys:\n"
+        "{\n"
+        '  "purpose": "string",\n'
+        '  "funding_topics": ["string"],\n'
+        '  "eligible_applicants": ["string"],\n'
+        '  "project_examples": ["string"],\n'
+        '  "problems_addressed": ["string"],\n'
+        '  "desired_outcomes": ["string"],\n'
+        '  "common_search_queries": ["string"]\n'
+        "}\n\n"
+        "Guidelines:\n"
+        "1. Purpose\n"
+        "  - Write a concise 1-3 sentence summary.\n"
+        "  - Focus on what the grant funds.\n"
+        "  - Avoid administrative details.\n\n"
+        "2. Funding Topics\n"
+        "  - Extract 5-15 major funding concepts.\n"
+        "  - Examples:\n"
+        "    - broadband\n"
+        "    - housing\n"
+        "    - behavioral health\n"
+        "    - renewable energy\n"
+        "    - workforce development\n\n"
+        "3. Eligible Applicants\n"
+        "  - Normalize eligibility into a clean list.\n"
+        "  - Preserve important distinctions.\n\n"
+        "4. Project Examples\n"
+        "  - Generate 10-20 examples of projects that would reasonably be funded.\n"
+        "  - These should be realistic examples supported by the grant.\n"
+        "  - Examples:\n"
+        "    - Install solar arrays\n"
+        "    - Upgrade water treatment facilities\n"
+        "    - Restore wetlands\n"
+        "  - Do NOT invent unrelated projects.\n\n"
+        "5. Problems Addressed\n"
+        "  - Identify the real-world problems this grant attempts to solve.\n"
+        "  - Examples:\n"
+        "    - unreliable internet access\n"
+        "    - opioid addiction\n"
+        "    - flood damage\n"
+        "    - aging infrastructure\n"
+        "    - language loss\n"
+        "  - Return 5-15 problems.\n\n"
+        "6. Expected Outcomes\n"
+        "  - Identify likely desired outcomes.\n"
+        "  - Examples:\n"
+        "    - improved broadband access\n"
+        "    - cleaner drinking water\n"
+        "    - lower wildfire risk\n"
+        "    - increased graduation rates\n"
+        "  - Return 5-15 outcomes.\n\n"
+        "7. Common Search Queries\n"
+        "  - Generate 15-20 realistic search queries someone might type into a grants portal.\n"
+        "  - Include:\n"
+        "    - short queries\n"
+        "    - long queries\n"
+        "    - synonyms\n"
+        "    - lay language\n"
+        "    - problem-focused searches\n"
+        "    - project-focused searches\n"
+        "  - Examples:\n"
+        "    - solar grants\n"
+        "    - help with flooding\n"
+        "    - money for mental health\n"
+        "    - replace lead pipes\n"
+        "    - community wildfire protection\n"
+        "  - These should reflect how a real user would search.\n\n"
+        "Here is the grant:\n"
+        "Title:\n"
+        f"{title}\n\n"
+        "Agency:\n"
+        f"{agency}\n\n"
+        "Description:\n"
+        f"{description[:12000]}\n\n"
+        "Eligibility:\n"
+        f"{eligibility[:4000]}\n\n"
+        "--- GRANT END ---"
+    )
+    openai_model_name = (
+        os.getenv("OPENAI_MODEL")
+        or os.getenv("OPENAI_MODEL_NAME")
+        or "gpt-4o-mini"
+    )
+    req = LLMRequest(
+        model=openai_model_name,
+        provider="openai",
+        messages=[
+            LLMMessage(role="system", content=system_content),
+            LLMMessage(role="user", content=user_content),
+        ],
+    )
+    result = llm_service.generate(req)
+    if not result.content:
+        print("No content returned from AI")
+        return None
+    try:
+        parsed = _extract_json_payload(result.content)
+        return json.loads(parsed)
+    except Exception as e:
+        print(result.content)
+        print("Error parsing JSON in extract_grants_ai_required_fields:", e)
+        return None

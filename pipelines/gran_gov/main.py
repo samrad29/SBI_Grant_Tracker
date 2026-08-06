@@ -1,5 +1,5 @@
 import requests
-from pipelines.gran_gov.init_tables import create_tables
+from pipelines.gran_gov.init_tables import create_grants_ai_table, create_tables
 from pipelines.gran_gov.ingestion_loop import daily_ingestion
 from pipelines.gran_gov.ingestion_utils import trim_opportunity_ids, update_last_seen_at, archive_old_grants
 from jobs.log_utils import log
@@ -50,6 +50,7 @@ def grants_main(conn, job_id: int, daily: bool = True) -> dict:
         print("Starting weekly grant ingestion loop...")
         log(conn, job_id, "Starting weekly grant ingestion loop...", "INFO")
     create_tables(conn)
+    create_grants_ai_table(conn)
     if os.getenv("TEST_5_IDS") == "False":
         test_mode = 0
     else:

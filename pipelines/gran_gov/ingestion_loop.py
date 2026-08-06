@@ -16,6 +16,12 @@ from openai import OpenAI
 from pipelines.ai_utils.llm_clients import LLMService
 from pipelines.ai_utils.llm_clients import GroqProvider, OpenAIProvider
 from pipelines.gran_gov.relevancy import apply_content_relevancy, refresh_all_freshness_scores
+from pipelines.ai_utils.extraction import (
+    grant_from_normalized,
+    should_sync_grants_ai,
+    sync_grants_ai_for_grant,
+)
+from pipelines.ai_utils.embed import embed_grants_ai_rows, fetch_grants_ai_by_opportunity_ids
 
 def canonical_json(obj: Any) -> str:
     # Sort keys + compact separators for stable hashing
@@ -203,6 +209,9 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
         updated_grants = 0
         new_relevant_grants = 0
         grants_with_alerts = 0
+        grants_ai_synced = 0
+        grants_ai_embedded = 0
+        pending_embed_ids: list[str] = []
         i = 0
         while i < len(opportunity_ids):
             oid = opportunity_ids[i]
@@ -218,8 +227,28 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
 
                 # Load previous snapshot (if any)
                 prev = get_previous_snapshot(conn, str(oid))
+                old_data = json.loads(prev["data_json"]) if prev else None
                 # Insert new snapshot and compute hash for dedupe
                 new_hash = insert_snapshot(conn, str(oid), normalized)
+
+                if should_sync_grants_ai(normalized, old_data):
+                    grant_for_ai = grant_from_normalized(normalized)
+                    if sync_grants_ai_for_grant(conn, grant_for_ai, llm_service):
+                        grants_ai_synced += 1
+                        pending_embed_ids.append(str(oid))
+                        log(
+                            conn,
+                            job_id,
+                            f"Synced grants_ai extraction for opportunity id: {oid}",
+                            "INFO",
+                        )
+                    else:
+                        log(
+                            conn,
+                            job_id,
+                            f"Failed grants_ai extraction for opportunity id: {oid}",
+                            "ERROR",
+                        )
 
                 # If there is no previous snapshot, we can skip the diffing process. However, we will need to classify the grant as relevant or not.
                 if prev is None:
@@ -311,12 +340,34 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
             f"Refreshed freshness_score for {freshness_updated} tribal_eligibility rows.",
             "INFO",
         )
-        log(conn, job_id, f"Ingestion completed with {ingestion_count} grants, {new_grants} new grants, {updated_grants} updated grants, {new_relevant_grants} new relevant grants, and {grants_with_alerts} grants with alerts.", "INFO")
+
+        if pending_embed_ids:
+            embed_rows = fetch_grants_ai_by_opportunity_ids(conn, pending_embed_ids)
+            saved, failed = embed_grants_ai_rows(conn, embed_rows)
+            grants_ai_embedded = saved
+            log(
+                conn,
+                job_id,
+                f"Embedded {saved} grant(s) from daily ingestion ({failed} failed).",
+                "INFO",
+            )
+
+        log(
+            conn,
+            job_id,
+            f"Ingestion completed with {ingestion_count} grants, {new_grants} new grants, "
+            f"{updated_grants} updated grants, {new_relevant_grants} new relevant grants, "
+            f"{grants_with_alerts} grants with alerts, {grants_ai_synced} grants_ai extractions, "
+            f"and {grants_ai_embedded} embeddings.",
+            "INFO",
+        )
         conn.commit()
         return {
             "records_processed": ingestion_count,
             "new_records": new_grants,
             "updated_records": updated_grants,
+            "grants_ai_synced": grants_ai_synced,
+            "grants_ai_embedded": grants_ai_embedded,
         }
     except Exception as e:
         log(conn, job_id, f"Error in daily ingestion: {e}", "ERROR")

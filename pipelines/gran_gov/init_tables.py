@@ -210,10 +210,54 @@ CREATE TABLE IF NOT EXISTS token_tracker (
 );
 """
 
+GRANTS_AI_SCHEMA_SQL = r"""
+CREATE TABLE IF NOT EXISTS grants_ai (
+  id BIGSERIAL PRIMARY KEY,
+  opportunity_id TEXT NOT NULL,
+  model TEXT,
+  prompt_version TEXT,
+  purpose TEXT,
+  funding_topics JSONB,
+  desired_outcomes JSONB,
+  project_examples JSONB,
+  problems_addressed JSONB,
+  common_search_queries JSONB,
+  embedding_document TEXT,
+  embedding VECTOR(1536),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_grants_ai_opportunity_id
+ON grants_ai(opportunity_id);
+"""
+
+SCHEMA_SQL = SCHEMA_SQL + GRANTS_AI_SCHEMA_SQL
+
 
 def _schema_for_sqlite(sql: str) -> str:
     """SQLite has no BIGSERIAL; use INTEGER PRIMARY KEY AUTOINCREMENT for surrogate ids."""
     return sql.replace("BIGSERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+
+
+def ensure_pgvector_extension(conn) -> None:
+    """Enable pgvector on Postgres (no-op on SQLite)."""
+    if isinstance(conn, sqlite3.Connection):
+        return
+    conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+
+
+def create_grants_ai_table(conn) -> None:
+    """Create grants_ai table and indexes (idempotent)."""
+    if isinstance(conn, sqlite3.Connection):
+        conn.executescript(_schema_for_sqlite(GRANTS_AI_SCHEMA_SQL))
+    else:
+        ensure_pgvector_extension(conn)
+        for part in GRANTS_AI_SCHEMA_SQL.split(";"):
+            part = part.strip()
+            if not part:
+                continue
+            conn.execute(part + ";")
+    conn.commit()
 
 
 def create_tables(conn) -> None:
@@ -225,6 +269,7 @@ def create_tables(conn) -> None:
     if isinstance(conn, sqlite3.Connection):
         conn.executescript(_schema_for_sqlite(SCHEMA_SQL))
     else:
+        ensure_pgvector_extension(conn)
         for part in SCHEMA_SQL.split(";"):
             part = part.strip()
             if not part:
@@ -243,4 +288,4 @@ def create_tables(conn) -> None:
     conn.commit()
 
 
-__all__ = ["create_tables"]
+__all__ = ["create_tables", "create_grants_ai_table", "ensure_pgvector_extension"]
