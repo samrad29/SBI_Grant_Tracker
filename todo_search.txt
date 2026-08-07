@@ -16,6 +16,10 @@ Pre-Work
     - probably use the tribal relevancy/freshness scores as well
 
 
+NOTE: Cost share is an important field and expected number of awards
+NOTE: want to be able to do categories
+
+
 ~~~ Evaluating Search Function ~~~
 I. Compare first 5 to second 5 and first 10 to second 10
     * At first just do this manually...
