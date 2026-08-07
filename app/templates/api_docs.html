@@ -112,7 +112,7 @@
 <div class="wrap">
     <div class="top">
         <h1>SBI Grant Tracker API docs</h1>
-        <p>Reference for frontend integration. Most JSON routes use <strong>GET</strong>; <code>/api/db_migration/reset_tables</code> also accepts <strong>POST</strong>.</p>
+        <p>Reference for frontend integration. Most JSON routes use <strong>GET</strong>; <code>/api/opportunities/semantic-search</code> and <code>/api/auth/login</code> also accept <strong>POST</strong>; <code>/api/db_migration/reset_tables</code> accepts GET or POST.</p>
         <p>Database selection follows <code>get_db_connection(test_mode=is_test_mode())</code>: set <code>DATABASE_URL</code> for Postgres, or use local SQLite when unset. <code>TEST_MODE</code> controls test DB behavior when not using <code>DATABASE_URL</code>.</p>
         <p><strong>User activity routes</strong> read <code>session["user_id"]</code>. The client must establish a Flask session with that key before calling them; they do not take <code>user_id</code> as a query parameter.</p>
         <p>For mutating actions (bookmarks, checklist, project tasks), the handlers still use GET with query parameters.</p>
@@ -343,6 +343,75 @@
   }
 ]</pre>
         <p>Scores may be <code>null</code> until the daily pipeline or <code>/api/db_migration/add_relevancy_score</code> has populated them.</p>
+    </div>
+
+    <div class="endpoint">
+        <div class="path"><span class="method">GET</span><span class="method">POST</span><code>/api/opportunities/semantic-search</code></div>
+        <p>Natural-language search over tribally eligible, <strong>open</strong> grants using vector embeddings from the <code>grants_ai</code> table. The query is embedded with OpenAI; results are ranked by cosine similarity to each grant’s stored embedding.</p>
+        <p>Use this for free-text queries (for example “funding to replace lead pipes on tribal land”). For tag filters or title/agency substring search, use <code>/api/opportunities</code> or <code>/api/get_opportunities_v2</code> instead. The client portal prioritizes semantic search when its semantic field is filled.</p>
+        <div class="section-title">Requirements</div>
+        <ul>
+            <li><strong>Postgres only</strong> — requires <code>DATABASE_URL</code>, the <code>pgvector</code> extension, and populated <code>grants_ai.embedding</code> rows (from the ingestion pipeline or <code>python -m scripts.extract_embed</code>).</li>
+            <li><strong>OpenAI</strong> — <code>OPENAI_API_KEY</code> is used to embed the user query at request time (<code>EMBEDDING_MODEL</code>, default <code>text-embedding-3-small</code>).</li>
+            <li>No Flask session required (public JSON route).</li>
+        </ul>
+        <div class="section-title">Filters (always applied)</div>
+        <ul>
+            <li><code>tribal_eligibility.is_tribal_eligible = true</code></li>
+            <li><code>grants.status IN ('posted', 'forecasted')</code> — <code>closed</code> and <code>archived</code> are omitted.</li>
+            <li><code>grants_ai.embedding IS NOT NULL</code> — grants without extraction/embedding do not appear.</li>
+        </ul>
+        <div class="section-title">Query params (GET)</div>
+        <ul>
+            <li><code>q</code> or <code>query</code> (required): natural-language search string.</li>
+            <li><code>limit</code> (optional): max results, default <strong>50</strong>, max <strong>150</strong>.</li>
+        </ul>
+        <div class="section-title">Request body (POST, JSON)</div>
+        <ul>
+            <li><code>q</code> or <code>query</code> (required): same as GET.</li>
+            <li><code>limit</code> (optional): same as GET.</li>
+        </ul>
+        <div class="section-title">Sorting</div>
+        <p>Ordered by <code>similarity_score</code> descending (cosine similarity between query embedding and grant embedding; higher is more similar).</p>
+        <div class="section-title">Response shape</div>
+        <p>JSON array of objects:</p>
+        <ul>
+            <li><code>opportunity_id</code>, <code>title</code>, <code>description</code>, <code>agency</code>, <code>status</code>, <code>posted_date</code>, <code>estimated_funding</code>, <code>grant_gov_url</code></li>
+            <li><code>purpose</code> — AI-extracted summary from <code>grants_ai</code></li>
+            <li><code>relevancy_score</code>, <code>freshness_score</code> — from <code>tribal_eligibility</code> (may be <code>null</code>)</li>
+            <li><code>similarity_score</code> — float 0–1 (rounded to 6 decimal places in the API response)</li>
+        </ul>
+        <div class="section-title">Example request (GET)</div>
+<pre>GET /api/opportunities/semantic-search?q=broadband%20for%20rural%20tribal%20communities&amp;limit=25</pre>
+        <div class="section-title">Example request (POST)</div>
+<pre>POST /api/opportunities/semantic-search
+Content-Type: application/json
+
+{ "q": "solar grants for tribal housing", "limit": 25 }</pre>
+        <div class="section-title">Example response (200)</div>
+<pre>[
+  {
+    "opportunity_id": "336489",
+    "title": "Tribal Broadband Connectivity Program",
+    "description": "Funding to expand high-speed internet access…",
+    "agency": "NTIA",
+    "status": "posted",
+    "posted_date": "2026-03-10",
+    "estimated_funding": 500000.0,
+    "grant_gov_url": "https://www.grants.gov/...",
+    "purpose": "Supports deployment of broadband infrastructure in underserved tribal areas.",
+    "relevancy_score": 42.0,
+    "freshness_score": 12.0,
+    "similarity_score": 0.812345
+  }
+]</pre>
+        <div class="section-title">Errors</div>
+        <ul>
+            <li><strong>400</strong> — missing <code>q</code>/<code>query</code>: <code>{ "message": "Query parameter 'q' is required." }</code></li>
+            <li><strong>400</strong> — invalid <code>limit</code>: <code>{ "message": "Invalid limit." }</code></li>
+            <li><strong>503</strong> — no <code>DATABASE_URL</code>: <code>{ "message": "Semantic search requires Postgres (DATABASE_URL)." }</code></li>
+            <li><strong>500</strong> — embedding or DB failure: <code>{ "message": "Error running semantic search: …" }</code></li>
+        </ul>
     </div>
 
     <div class="note">
