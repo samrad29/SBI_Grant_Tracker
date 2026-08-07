@@ -19,6 +19,26 @@ GROQ_MODEL_NAME = os.getenv("GROQ_MODEL_NAME")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 
 
+def get_openai_model_name() -> str:
+    """Resolve chat model from env (OPENAI_MODEL or OPENAI_MODEL_NAME)."""
+    return (
+        os.getenv("OPENAI_MODEL")
+        or os.getenv("OPENAI_MODEL_NAME")
+        or OPENAI_MODEL_NAME
+        or "gpt-4o-mini"
+    )
+
+
+def get_groq_model_name() -> str:
+    """Resolve Groq chat model from env."""
+    return (
+        os.getenv("GROQ_MODEL")
+        or os.getenv("GROQ_MODEL_NAME")
+        or GROQ_MODEL_NAME
+        or "llama-3.3-70b-versatile"
+    )
+
+
 def _extract_json_payload(content: str) -> str:
     """
     Normalize LLM output into a JSON string.
@@ -60,7 +80,7 @@ def ai_classify_rfp(text: str, llm: LLMService) -> bool:
     user_content = f"Classify this document:\n\n--- DOCUMENT START ---\n{text[:8000]}\n--- DOCUMENT END ---"
 
     req = LLMRequest(
-        model=GROQ_MODEL_NAME,
+        model=get_groq_model_name(),
         provider="groq",
         messages=[
             LLMMessage(role="system", content=system_content),
@@ -127,9 +147,8 @@ def ai_grant_tagging(llm_service, grant):
         f"\n\n--- GRANT Deadline Description ---\n{grant.get('deadline_description', '')}\n"
         "\n\n--- GRANT END ---"
     )
-    openai_model_name = os.getenv("OPENAI_MODEL")
     req = LLMRequest(
-        model=openai_model_name,
+        model=get_openai_model_name(),
         provider="openai",
         messages=[
             LLMMessage(role="system", content=system_content),
@@ -165,9 +184,8 @@ def ai_tribal_eligibility_check(llm_service, grant):
         f"\n\n--- GRANT Deadline Description ---\n{grant.get('deadline_description', '')}\n"
         "\n\n--- GRANT END ---"
     )
-    groq_model_name = os.getenv("GROQ_MODEL")
     req = LLMRequest(
-        model=groq_model_name,
+        model=get_groq_model_name(),
         provider="groq",
         messages=[
             LLMMessage(role="system", content=system_content),
@@ -223,13 +241,8 @@ def ai_classify_deadline_passed(
         "- If only a calendar date with no time, treat the deadline as end of that day.\n"
         "- If information is missing or too ambiguous, deadline_passed=false and confidence=low."
     )
-    groq_model_name = (
-        os.getenv("GROQ_MODEL")
-        or os.getenv("GROQ_MODEL_NAME")
-        or "llama-3.3-70b-versatile"
-    )
     req = LLMRequest(
-        model=groq_model_name,
+        model=get_groq_model_name(),
         provider="groq",
         messages=[
             LLMMessage(role="system", content=system_content),
@@ -365,13 +378,8 @@ def extract_grants_ai_required_fields(grant: dict, llm_service: LLMService) -> d
         f"{eligibility[:4000]}\n\n"
         "--- GRANT END ---"
     )
-    openai_model_name = (
-        os.getenv("OPENAI_MODEL")
-        or os.getenv("OPENAI_MODEL_NAME")
-        or "gpt-4o-mini"
-    )
     req = LLMRequest(
-        model=openai_model_name,
+        model=get_openai_model_name(),
         provider="openai",
         messages=[
             LLMMessage(role="system", content=system_content),

@@ -215,12 +215,33 @@ def create_grants_ai_row(conn, grant: dict, llm_service: LLMService) -> bool:
     return sync_grants_ai_for_grant(conn, grant, llm_service)
 
 
+def is_grant_tribally_eligible(conn: Any, opportunity_id: str) -> bool:
+    """True when tribal_eligibility marks this grant as tribally eligible."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT is_tribal_eligible
+        FROM tribal_eligibility
+        WHERE opportunity_id = %s
+        """,
+        (str(opportunity_id),),
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+    value = row_get(row, "is_tribal_eligible", 0)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "t")
+
+
 def save_grants_ai_extraction(
     conn,
     opportunity_id: str,
     extracted_fields: tuple,
     *,
     embedding_document: str | None = None,
+    commit: bool = True,
 ) -> bool:
     """
     Insert or update extracted fields. Clears embedding so it can be regenerated.
@@ -258,15 +279,25 @@ def save_grants_ai_extraction(
                 embedding_document,
             ),
         )
-        conn.commit()
+        if commit:
+            conn.commit()
         return True
     except Exception as e:
-        conn.rollback()
+        if commit:
+            conn.rollback()
+        else:
+            raise
         print(f"Error saving grants_ai extraction for {opportunity_id}: {e}")
         return False
 
 
-def sync_grants_ai_for_grant(conn, grant: dict, llm_service: LLMService) -> bool:
+def sync_grants_ai_for_grant(
+    conn,
+    grant: dict,
+    llm_service: LLMService,
+    *,
+    commit: bool = True,
+) -> bool:
     """Extract with the LLM and upsert grants_ai (clears any prior embedding)."""
     extracted = extract_grant_ai_fields(grant, llm_service)
     if not extracted:
@@ -282,6 +313,7 @@ def sync_grants_ai_for_grant(conn, grant: dict, llm_service: LLMService) -> bool
         grant["opportunity_id"],
         extracted_fields,
         embedding_document=embedding_document,
+        commit=commit,
     )
 
 

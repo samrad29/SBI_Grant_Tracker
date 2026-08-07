@@ -20,6 +20,7 @@ from pipelines.ai_utils.extraction import (
     grant_from_normalized,
     should_sync_grants_ai,
     sync_grants_ai_for_grant,
+    is_grant_tribally_eligible,
 )
 from pipelines.ai_utils.embed import embed_grants_ai_rows, fetch_grants_ai_by_opportunity_ids
 
@@ -29,6 +30,43 @@ def canonical_json(obj: Any) -> str:
 
 def sha256_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _daily_sync_grants_ai_enabled() -> bool:
+    return os.getenv("DAILY_INGESTION_SYNC_GRANTS_AI", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def _daily_embed_grants_ai_enabled() -> bool:
+    return os.getenv("DAILY_INGESTION_EMBED_GRANTS_AI", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def _maybe_queue_grants_ai_sync(
+    pending: list[dict],
+    conn,
+    normalized: dict,
+    old_data: dict | None,
+    opportunity_id: str,
+    *,
+    tribal_eligible: bool | None = None,
+) -> None:
+    """Queue tribal-eligible grants that need LLM extraction (deferred batch)."""
+    if not _daily_sync_grants_ai_enabled():
+        return
+    if not should_sync_grants_ai(normalized, old_data):
+        return
+    if tribal_eligible is None:
+        tribal_eligible = is_grant_tribally_eligible(conn, opportunity_id)
+    if not tribal_eligible:
+        return
+    pending.append(grant_from_normalized(normalized))
 
 
 def _sql_text(value: Any) -> Optional[str]:
@@ -200,7 +238,7 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
       - updated_records: grants where the snapshot hash changed vs. the prior snapshot
     """
     try:
-        token_tracker = TokenTracker(job_id)
+        token_tracker = TokenTracker(job_id, conn=conn)
         groq_provider = GroqProvider(client=Groq(api_key=os.getenv("GROQ_API_KEY")))
         openai_provider = OpenAIProvider(client=OpenAI(api_key=os.getenv("OPENAI_API_KEY")))
         llm_service = LLMService(groq_provider=groq_provider, openai_provider=openai_provider, token_tracker=token_tracker)
@@ -212,6 +250,7 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
         grants_ai_synced = 0
         grants_ai_embedded = 0
         pending_embed_ids: list[str] = []
+        pending_ai_grants: list[dict] = []
         i = 0
         while i < len(opportunity_ids):
             oid = opportunity_ids[i]
@@ -231,37 +270,21 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                 # Insert new snapshot and compute hash for dedupe
                 new_hash = insert_snapshot(conn, str(oid), normalized)
 
-                if should_sync_grants_ai(normalized, old_data):
-                    grant_for_ai = grant_from_normalized(normalized)
-                    if sync_grants_ai_for_grant(conn, grant_for_ai, llm_service):
-                        grants_ai_synced += 1
-                        pending_embed_ids.append(str(oid))
-                        log(
-                            conn,
-                            job_id,
-                            f"Synced grants_ai extraction for opportunity id: {oid}",
-                            "INFO",
-                        )
-                    else:
-                        log(
-                            conn,
-                            job_id,
-                            f"Failed grants_ai extraction for opportunity id: {oid}",
-                            "ERROR",
-                        )
-
                 # If there is no previous snapshot, we can skip the diffing process. However, we will need to classify the grant as relevant or not.
+                is_tribal_eligible = False
                 if prev is None:
                     # Classify the grant as relevant or not
                     new_grants += 1
                     quick_check_result = quick_classification(normalized)
                     if quick_check_result["is_tribal_eligible"]:
+                        is_tribal_eligible = True
                         update_tribal_eligibility(conn, str(oid), quick_check_result)
                         log(conn, job_id, f"Identified as new grant and classified as tribal eligible by quick classification for opportunity id: {oid}", "INFO")
                         new_relevant_grants += 1
                     else: 
                         classification = ai_tribal_eligibility_check(llm_service, normalized)
                         if classification is not None and classification["is_tribal_eligible"]:
+                            is_tribal_eligible = True
                             update_tribal_eligibility(conn, str(oid), classification)
                             log(conn, job_id, f"Identified as new grant and classified as tribal eligible by AIfor opportunity id: {oid}", "INFO")
                             new_relevant_grants += 1
@@ -275,6 +298,14 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                         log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
                     if apply_content_relevancy(conn, normalized):
                         log(conn, job_id, f"Relevancy score updated for new grant {oid}", "INFO")
+                    _maybe_queue_grants_ai_sync(
+                        pending_ai_grants,
+                        conn,
+                        normalized,
+                        old_data,
+                        str(oid),
+                        tribal_eligible=is_tribal_eligible,
+                    )
 
                 if prev is not None:
                     old_hash = prev["hash"]
@@ -328,6 +359,13 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
                         log(conn, job_id, f"Tagged new grant with tags: {ai_result['tags']} for opportunity id: {oid}", "INFO")
                     if apply_content_relevancy(conn, normalized):
                         log(conn, job_id, f"Relevancy score updated for changed grant {oid}", "INFO")
+                _maybe_queue_grants_ai_sync(
+                    pending_ai_grants,
+                    conn,
+                    normalized,
+                    old_data,
+                    str(oid),
+                )
                 i += 1
             except Exception as e:
                 log(conn, job_id, f"Error in daily ingestion for opportunity id: {oid}: {e}", "ERROR")
@@ -341,7 +379,44 @@ def daily_ingestion(conn, opportunity_ids: list[str], job_id: int):
             "INFO",
         )
 
-        if pending_embed_ids:
+        if pending_ai_grants:
+            sync_started = time.time()
+            for grant in pending_ai_grants:
+                oid = grant["opportunity_id"]
+                try:
+                    if sync_grants_ai_for_grant(conn, grant, llm_service, commit=False):
+                        grants_ai_synced += 1
+                        pending_embed_ids.append(str(oid))
+                    else:
+                        log(
+                            conn,
+                            job_id,
+                            f"Failed grants_ai extraction for opportunity id: {oid}",
+                            "ERROR",
+                        )
+                except Exception as e:
+                    conn.rollback()
+                    log(
+                        conn,
+                        job_id,
+                        f"Error in grants_ai extraction for opportunity id: {oid}: {e}",
+                        "ERROR",
+                    )
+            try:
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                log(conn, job_id, f"Error committing grants_ai extractions: {e}", "ERROR")
+            elapsed = time.time() - sync_started
+            log(
+                conn,
+                job_id,
+                f"Batch grants_ai extraction: {grants_ai_synced}/{len(pending_ai_grants)} "
+                f"in {elapsed:.1f}s.",
+                "INFO",
+            )
+
+        if pending_embed_ids and _daily_embed_grants_ai_enabled():
             embed_rows = fetch_grants_ai_by_opportunity_ids(conn, pending_embed_ids)
             saved, failed = embed_grants_ai_rows(conn, embed_rows)
             grants_ai_embedded = saved
